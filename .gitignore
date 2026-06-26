@@ -1,0 +1,31 @@
+# Variabili d'ambiente — mai in Git
+.env
+
+# Ambienti virtuali Python
+venv/
+.venv/
+env/
+
+# Cache Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Test cache
+.pytest_cache/
+
+# Output generati (PDF report)
+outputs/
+
+# PDF nella root (documenti interni, non codice)
+*.pdf
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
