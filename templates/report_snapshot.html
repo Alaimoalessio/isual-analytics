@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8"/>
+<style>
+  @page { size: A4; margin: 0; }
+
+  /* Reset base — tutto deve stare in una sola pagina A4 */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
+    background: #FFFFFF;
+    color: #1A1A2E;
+    font-size: 10px;
+    line-height: 1.4;
+  }
+
+  .page {
+    width: 210mm;
+    height: 297mm;
+    background: #FFFFFF;
+    margin: 0 auto;
+    overflow: hidden;
+  }
+
+  /* ── Header compatto ─────────────────────────────────────── */
+  .header {
+    background: {{ colors.primary_color }};
+    padding: 12px 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .header-brand {
+    font-size: 16px;
+    font-weight: 800;
+    color: white;
+    letter-spacing: -0.5px;
+  }
+  .header-brand span { color: {{ colors.accent_color }}; }
+  .header-right {
+    text-align: right;
+    font-size: 10px;
+    color: rgba(255,255,255,0.7);
+  }
+  .header-right strong {
+    font-size: 12px;
+    color: white;
+    display: block;
+  }
+
+  /* ── Contenuto ───────────────────────────────────────────── */
+  .content { padding: 16px 28px; }
+
+  /* ── Etichetta sezione compatta ──────────────────────────── */
+  .section-label {
+    font-size: 8px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: {{ colors.primary_color }};
+    border-bottom: 2px solid {{ colors.primary_color }};
+    padding-bottom: 3px;
+    margin-bottom: 8px;
+    margin-top: 14px;
+  }
+  .section-label:first-child { margin-top: 0; }
+
+  /* ── 4 KPI in riga orizzontale ───────────────────────────── */
+  .kpi-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 8px;
+  }
+  .kpi-item {
+    background: #F8F9FA;
+    border-radius: 6px;
+    padding: 10px 12px;
+    border-left: 3px solid {{ colors.primary_color }};
+  }
+  .kpi-item:nth-child(2) { border-left-color: {{ colors.secondary_color }}; }
+  .kpi-item:nth-child(3) { border-left-color: {{ colors.accent_color }}; }
+  .kpi-item:nth-child(4) { border-left-color: #1A1A2E; }
+  .kpi-lbl {
+    font-size: 8px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #6C757D;
+    margin-bottom: 4px;
+  }
+  .kpi-val {
+    font-size: 22px;
+    font-weight: 900;
+    color: #1A1A2E;
+    line-height: 1;
+    letter-spacing: -1px;
+  }
+  .kpi-val-sm {
+    font-size: 13px;
+    font-weight: 800;
+    color: #1A1A2E;
+    line-height: 1.3;
+  }
+
+  /* ── Grafico trend compatto (max 120px) ──────────────────── */
+  .trend-wrap {
+    background: #F8F9FA;
+    border-radius: 8px;
+    padding: 8px 10px;
+    height: 130px;
+    overflow: hidden;
+  }
+  .trend-wrap img {
+    width: 100%;
+    height: 114px;
+    display: block;
+  }
+
+  /* ── Tabelle compatte ────────────────────────────────────── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10px;
+  }
+  thead th {
+    background: #F1F3F5;
+    color: #6C757D;
+    font-size: 8px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 5px 8px;
+    text-align: left;
+    border-bottom: 1px solid #DEE2E6;
+  }
+  thead th.r { text-align: right; }
+  tbody td {
+    padding: 5px 8px;
+    border-bottom: 1px solid #F1F3F5;
+    color: #1A1A2E;
+    vertical-align: middle;
+  }
+  tbody td.r  { text-align: right; color: #6C757D; }
+  tbody td.b  { font-weight: 700; }
+
+  /* ── Footer minimalista — una riga sola ──────────────────── */
+  .footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #1A1A2E;
+    color: rgba(255,255,255,0.5);
+    padding: 7px 28px;
+    font-size: 9px;
+    text-align: center;
+  }
+  .footer strong { color: rgba(255,255,255,0.85); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HEADER ──────────────────────────────────────────────────── -->
+  <div class="header">
+    <div class="header-left">
+      {% if colors.logo_url %}
+      <img src="file://{{ colors.logo_url }}" alt="logo"
+           style="height: 30px; width: auto; display: block;">
+      {% endif %}
+      <div class="header-brand">isual<span>.</span></div>
+    </div>
+    <div class="header-right">
+      <strong>{{ kpi.period_label }}</strong>
+      {{ kpi.date_range }}
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- SEZIONE 1: 4 KPI IN RIGA ────────────────────────────── -->
+    <div class="section-label">Metriche Chiave</div>
+    <div class="kpi-row">
+      <div class="kpi-item">
+        <div class="kpi-lbl">Reach</div>
+        <div class="kpi-val">{{ kpi.total_reach }}</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-lbl">Engagement Rate</div>
+        <div class="kpi-val">{{ kpi.engagement_rate }}</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-lbl">Post Pubblicati</div>
+        <div class="kpi-val">{{ kpi.total_posts }}</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-lbl">Top Partner</div>
+        {% if partner_rows %}
+        <div class="kpi-val-sm">{{ partner_rows[0].partner_name }}</div>
+        {% else %}
+        <div class="kpi-val-sm" style="color:#6C757D;">—</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- SEZIONE 2: TREND COMPATTO ───────────────────────────── -->
+    {% if trend_chart %}
+    <div class="section-label">Andamento Settimanale — Reach</div>
+    <div class="trend-wrap">
+      <img src="data:image/png;base64,{{ trend_chart }}" alt="Trend"/>
+    </div>
+    {% endif %}
+
+    <!-- SEZIONE 3: TOP 3 PARTNER — TABELLA COMPATTA ─────────── -->
+    <div class="section-label">Top 3 Partner</div>
+    {% if partner_rows %}
+    <table>
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th class="r">Post</th>
+          <th class="r">ER %</th>
+          <th class="r">Health</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in partner_rows[:3] %}
+        <tr>
+          <td class="b">{{ row.partner_name }}</td>
+          <td class="r">{{ row.posts_int }}</td>
+          <td class="r">{{ row.er_fmt }}</td>
+          <td class="r">{{ row.health_score }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="color:#6C757D; padding: 6px 0;">Nessun dato partner disponibile.</p>
+    {% endif %}
+
+    <!-- SEZIONE 4: CHANNEL BREAKDOWN COMPATTO ───────────────── -->
+    <div class="section-label">Canali</div>
+    {% if channel_rows %}
+    <table>
+      <thead>
+        <tr>
+          <th>Canale</th>
+          <th class="r">Reach</th>
+          <th class="r">Post</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in channel_rows %}
+        <tr>
+          <td class="b">{{ row.channel_upper }}</td>
+          <td class="r">{{ row.reach_fmt }}</td>
+          <td class="r">{{ row.posts }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="color:#6C757D; padding: 6px 0;">Nessun dato canale disponibile.</p>
+    {% endif %}
+
+  </div><!-- /content -->
+
+  <!-- FOOTER ───────────────────────────────────────────────────── -->
+  <div class="footer">
+    <strong>ISUAL Analytics</strong> · {{ kpi.date_range }} · Solo uso interno
+  </div>
+
+</div><!-- /page -->
+</body>
+</html>

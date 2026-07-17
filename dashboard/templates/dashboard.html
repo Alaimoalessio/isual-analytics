@@ -32,31 +32,61 @@
         <!-- Barra Controlli -->
         <section class="controls-bar">
             <div class="controls-left">
-                <div class="control-group">
-                    <label for="brand-select">Brand</label>
-                    <select id="brand-select" class="form-select">
-                        <option value="all">Tutti i brand</option>
-                    </select>
+                <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    <div class="control-group">
+                        <label for="brand-select" style="min-width: 50px;">Brand</label>
+                        <select id="brand-select" class="form-select">
+                            <option value="all">Tutti i brand</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label for="partner-select" style="min-width: 50px;">Tag</label>
+                        <select id="partner-select" class="form-select">
+                            <option value="all">Tutti i tag</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="control-group">
                     <label>Periodo</label>
-                    <div class="period-toggle" id="period-toggle">
-                        <button class="btn btn-outline period-btn active" data-days="30">30gg</button>
-                        <button class="btn btn-outline period-btn" data-days="60">60gg</button>
-                        <button class="btn btn-outline period-btn" data-days="90">90gg</button>
+                    <div style="display: flex; flex-direction: column;">
+                        <div class="period-toggle" id="period-toggle">
+                            <button class="btn btn-outline period-btn active" data-days="30">30gg</button>
+                            <button class="btn btn-outline period-btn" data-days="60">60gg</button>
+                            <button class="btn btn-outline period-btn" data-days="90">90gg</button>
+                            <button class="btn btn-outline period-btn" data-days="custom" id="custom-period-btn">
+                                Personalizzato
+                            </button>
+                        </div>
+                        <div id="custom-date-range" style="display:none; width:100%; gap:8px; align-items:center; margin-top:8px; padding-top:8px; border-top:1px solid #E9ECEF;">
+                            <input type="date" id="date-from" class="btn btn-outline" 
+                                   style="cursor:pointer; font-size:12px;">
+                            <span style="font-size:12px;">→</span>
+                            <input type="date" id="date-to" class="btn btn-outline"
+                                   style="cursor:pointer; font-size:12px;">
+                            <button id="apply-custom-date" class="btn btn-primary" 
+                                    style="font-size:12px; padding:4px 10px;">Applica</button>
+                        </div>
                     </div>
                 </div>
             </div>
-            <div class="controls-right">
-                <span class="last-update" id="last-update-text">Aggiornato il --/--/---- alle --:--</span>
-                <button id="refresh-btn" class="btn btn-icon btn-refresh" title="Ricarica dati">🔄</button>
+            <div class="controls-right" style="white-space: nowrap; flex-shrink: 0;">
+                <span class="last-update" id="last-update-text" title="Aggiornato il --/--/---- alle --:--">Aggiornato pochi secondi fa</span>
+                <button id="refresh-btn" class="btn btn-icon btn-refresh" title="Ricarica dati" style="display: inline-flex; align-items: center; justify-content: center;">
+                    <svg class="refresh-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                        <path d="M3 3v5h5"/>
+                    </svg>
+                </button>
             </div>
         </section>
 
         <!-- Sezione 1: KPI Live -->
         <section class="section kpi-section">
             <div class="section-header">
-                <h2>KPI Live</h2>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <h2 style="margin: 0;">KPI Live</h2>
+                    <button id="btn-kpi-config" class="btn-icon" title="Configura KPI" style="font-size: 1.25rem;">⚙️</button>
+                </div>
                 <span class="kpi-date-range" id="kpi-date-range">Caricamento...</span>
             </div>
             <div class="kpi-grid" id="kpi-grid">
@@ -98,16 +128,26 @@
                         <span class="btn-text">Scarica CSV</span>
                         <span class="spinner hidden"></span>
                     </button>
+
                     <button id="generate-btn" class="btn btn-primary">
                         <span class="btn-text">Genera Report PDF</span>
                         <span class="spinner hidden"></span>
                     </button>
                 </div>
             </div>
-            <div class="table-container">
+            <div id="bulk-delete-bar" style="display: none; padding: 10px 16px; background-color: rgba(224, 49, 49, 0.05); border: 1px solid var(--red-alert); border-radius: var(--radius-lg) var(--radius-lg) 0 0; border-bottom: none; align-items: center; justify-content: space-between;">
+                <span style="color: var(--red-alert); font-weight: 600; font-size: 0.875rem;"><span id="selected-count">0</span> report selezionati</span>
+                <button id="bulk-delete-btn" class="btn btn-outline" style="border-color: var(--red-alert); color: var(--red-alert); padding: 0.4rem 0.8rem; font-size: 0.875rem;">
+                    <span class="btn-text">🗑️ Elimina Selezionati</span>
+                </button>
+            </div>
+            <div class="table-container" style="border-top-left-radius: 0; border-top-right-radius: 0;">
                 <table class="reports-table">
                     <thead>
                         <tr>
+                            <th style="width: 40px; text-align: center;">
+                                <input type="checkbox" id="select-all-reports" title="Seleziona tutti" style="cursor: pointer;">
+                            </th>
                             <th>Nome File</th>
                             <th>Data Generazione</th>
                             <th>Dimensione</th>
@@ -116,7 +156,7 @@
                     </thead>
                     <tbody id="reports-body">
                         <tr>
-                            <td colspan="4" class="text-center loading-text">Caricamento storico...</td>
+                            <td colspan="5" class="text-center loading-text">Caricamento storico...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -124,6 +164,48 @@
         </section>
     </main>
 
+    <!-- Inizio il blocco del Drawer per la configurazione delle KPI. 
+         Questo div serve a creare lo sfondo scuro semi-trasparente che sta dietro al pannello. 
+         Uso l'ID kpi-drawer-overlay così lo pesco facilmente da JavaScript! -->
+    <div class="kpi-drawer-overlay" id="kpi-drawer-overlay"></div>
+    
+    <!-- Questo è il vero e proprio pannello laterale (drawer) che scivolerà da destra -->
+    <div class="kpi-drawer" id="kpi-drawer">
+        <!-- Inizio l'header del drawer dove metto il titolo e la X per chiuderlo -->
+        <div class="kpi-drawer-header">
+            <h3>Configura KPI</h3>
+            <button class="btn-icon btn-close-drawer" id="btn-close-drawer" title="Chiudi">&times;</button>
+        </div>
+        <!-- Fine header del drawer -->
+
+        <!-- Inizio il body del drawer. Qui ci andranno tutte le righe delle KPI -->
+        <div class="kpi-drawer-body">
+            <!-- Uso questo div per mostrare i messaggini verdi di successo o rossi di errore all'utente -->
+            <div class="kpi-drawer-feedback" id="kpi-drawer-feedback"></div>
+            
+            <!-- Questa è la lista (ul sta per unordered list) che conterrà le righe. 
+                 La lascio vuota perché ci pensa JavaScript a riempirla con i dati del backend! -->
+            <ul id="kpi-sortable-list" class="kpi-sortable-list">
+                <!-- Popolato via JS con un ciclo -->
+            </ul>
+        </div>
+        <!-- Fine body del drawer -->
+
+        <!-- Inizio il footer del drawer, dove metto il bottone per salvare -->
+        <div class="kpi-drawer-footer">
+            <button class="btn btn-primary w-100" id="btn-save-kpi-config">
+                <span class="btn-text">Salva configurazione</span>
+                <!-- Metto uno spinner nascosto così quando salva posso mostrarlo per far capire che sta caricando -->
+                <span class="spinner hidden" style="margin-left: 8px;"></span>
+            </button>
+        </div>
+        <!-- Fine footer del drawer -->
+    </div>
+    <!-- Fine del blocco del Drawer -->
+
+    <!-- Includo la libreria esterna SortableJS da un CDN (Content Delivery Network).
+         Ci serve per permettere agli utenti di trascinare le righe delle KPI con il mouse e riordinarle! -->
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

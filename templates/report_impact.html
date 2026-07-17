@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8"/>
+<style>
+  @page { size: A4; margin: 0; }
+
+  /* Reset base */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
+    background: #FFFFFF;
+    color: #1A1A2E;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  .page {
+    width: 210mm;
+    background: #FFFFFF;
+    margin: 0 auto;
+  }
+
+  /* ── Header magazine ─────────────────────────────────────── */
+  .header {
+    background: {{ colors.primary_color }};
+    padding: 30px 40px 26px;
+    color: white;
+  }
+  .header-top {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 22px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.2);
+  }
+  .header-brand {
+    font-size: 20px;
+    font-weight: 800;
+    color: white;
+    letter-spacing: -0.5px;
+  }
+  .header-brand span { color: {{ colors.accent_color }}; }
+  .header-main-title {
+    font-size: 46px;
+    font-weight: 900;
+    color: white;
+    letter-spacing: -2px;
+    line-height: 1;
+    margin-bottom: 10px;
+  }
+  .header-period {
+    font-size: 13px;
+    color: rgba(255,255,255,0.7);
+  }
+  .header-accent {
+    height: 4px;
+    width: 52px;
+    background: {{ colors.accent_color }};
+    border-radius: 2px;
+    margin-top: 14px;
+  }
+
+  /* ── Contenuto ───────────────────────────────────────────── */
+  .content { padding: 30px 40px; }
+
+  /* ── Titoli sezione ──────────────────────────────────────── */
+  .section-title {
+    font-size: 18px;
+    font-weight: 800;
+    color: #1A1A2E;
+    margin-bottom: 16px;
+    margin-top: 30px;
+    letter-spacing: -0.5px;
+  }
+  .section-title:first-child { margin-top: 0; }
+  .accent { color: {{ colors.primary_color }}; }
+
+  /* ── Hero KPI 2x2 ────────────────────────────────────────── */
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 30px;
+  }
+  .hero-card {
+    border-radius: 14px;
+    padding: 28px 24px;
+    color: white;
+  }
+  .hero-c1 { background: {{ colors.primary_color }}; }
+  .hero-c2 { background: {{ colors.secondary_color }}; }
+  .hero-c3 { background: {{ colors.accent_color }}; }
+  .hero-c4 { background: #1A1A2E; }
+  .hero-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: rgba(255,255,255,0.65);
+    margin-bottom: 12px;
+  }
+  .hero-value {
+    font-size: 64px;
+    font-weight: 900;
+    color: white;
+    line-height: 1;
+    letter-spacing: -3px;
+  }
+  .hero-sub {
+    font-size: 10px;
+    color: rgba(255,255,255,0.55);
+    margin-top: 10px;
+  }
+
+  /* ── Grafico trend a tutta larghezza ─────────────────────── */
+  .trend-card {
+    background: #F8F9FA;
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 30px;
+  }
+  .trend-card img { width: 100%; display: block; }
+
+  /* ── Top 3 partner — card affiancate ────────────────────── */
+  .partner-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 30px;
+  }
+  .partner-card {
+    background: white;
+    border-radius: 14px;
+    border: 2px solid #F1F3F5;
+    padding: 22px 18px;
+  }
+  .partner-card-first { border-color: {{ colors.accent_color }}; }
+  .partner-rank {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: {{ colors.accent_color }};
+    margin-bottom: 6px;
+  }
+  .partner-rank-other { color: #ADB5BD; }
+  .partner-name {
+    font-size: 15px;
+    font-weight: 800;
+    color: #1A1A2E;
+    margin-bottom: 14px;
+    line-height: 1.2;
+  }
+  .partner-score-num {
+    font-size: 36px;
+    font-weight: 900;
+    color: {{ colors.primary_color }};
+    line-height: 1;
+  }
+  .partner-score-denom {
+    font-size: 14px;
+    font-weight: 400;
+    color: #ADB5BD;
+  }
+  .partner-score-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #6C757D;
+    margin-top: 3px;
+    margin-bottom: 12px;
+  }
+  .partner-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 9px;
+    font-weight: 700;
+  }
+  .badge-top   { background: #D3F9D8; color: #2F9E44; }
+  .badge-amp   { background: #DBE4FF; color: {{ colors.primary_color }}; }
+  .badge-niche { background: #FFE8CC; color: {{ colors.accent_color }}; }
+  .badge-weak  { background: #F1F3F5; color: #6C757D; }
+
+  /* ── Channel breakdown — barre colorate ─────────────────── */
+  /* channel_rows è ordinato per reach DESC: prima barra = 100% */
+  .channel-list { margin-bottom: 28px; }
+  .channel-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 12px;
+  }
+  .channel-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #1A1A2E;
+    width: 84px;
+  }
+  .bar-wrap {
+    flex: 1;
+    background: #F1F3F5;
+    border-radius: 6px;
+    height: 24px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    background: {{ colors.primary_color }};
+    border-radius: 6px;
+  }
+  .channel-stats {
+    font-size: 10px;
+    color: #6C757D;
+    width: 120px;
+    text-align: right;
+  }
+  .channel-stats strong { color: #1A1A2E; }
+
+  /* ── Footer semplice ─────────────────────────────────────── */
+  .footer {
+    background: #1A1A2E;
+    color: rgba(255,255,255,0.5);
+    padding: 14px 40px;
+    font-size: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .footer strong { color: rgba(255,255,255,0.85); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HEADER ──────────────────────────────────────────────────── -->
+  <div class="header">
+    <div class="header-top">
+      {% if colors.logo_url %}
+      <img src="file://{{ colors.logo_url }}" alt="logo"
+           style="height: 48px; width: auto; display: block;">
+      {% endif %}
+      <div class="header-brand">isual<span>.</span></div>
+    </div>
+    <div class="header-main-title">Performance Report</div>
+    <div class="header-period">{{ kpi.date_range }} &nbsp;·&nbsp; {{ kpi.period_label }}</div>
+    <div class="header-accent"></div>
+  </div>
+
+  <div class="content">
+
+    <!-- SEZIONE 1: HERO KPI 2x2 ─────────────────────────────── -->
+    <div class="section-title">I <span class="accent">Numeri</span> del Periodo</div>
+    <div class="hero-grid">
+      <div class="hero-card hero-c1">
+        <div class="hero-label">Persone Raggiunte</div>
+        <div class="hero-value">{{ kpi.total_reach }}</div>
+        <div class="hero-sub">Audience unica del network</div>
+      </div>
+      <div class="hero-card hero-c2">
+        <div class="hero-label">Volte Visto</div>
+        <div class="hero-value">{{ kpi.total_impressions }}</div>
+        <div class="hero-sub">Esposizioni totali</div>
+      </div>
+      <div class="hero-card hero-c3">
+        <div class="hero-label">Tasso di Coinvolgimento</div>
+        <div class="hero-value">{{ kpi.engagement_rate }}</div>
+        <div class="hero-sub">Engagement / Reach × 100</div>
+      </div>
+      <div class="hero-card hero-c4">
+        <div class="hero-label">Contenuti Pubblicati</div>
+        <div class="hero-value">{{ kpi.total_posts }}</div>
+        <div class="hero-sub">Post con status OK</div>
+      </div>
+    </div>
+
+    <!-- SEZIONE 2: TREND A TUTTA LARGHEZZA ──────────────────── -->
+    {% if trend_chart %}
+    <div class="section-title">Andamento nel <span class="accent">Periodo</span></div>
+    <div class="trend-card">
+      <img src="data:image/png;base64,{{ trend_chart }}" alt="Trend"/>
+    </div>
+    {% endif %}
+
+    <!-- SEZIONE 3: TOP 3 PARTNER — CARD ────────────────────── -->
+    {% if partner_rows %}
+    <div class="section-title">Top <span class="accent">Partner</span></div>
+    <div class="partner-grid">
+      {% for row in partner_rows[:3] %}
+      <div class="partner-card {% if loop.first %}partner-card-first{% endif %}">
+        <div class="partner-rank {% if not loop.first %}partner-rank-other{% endif %}">
+          #{{ loop.index }}{% if loop.first %} · Migliore{% endif %}
+        </div>
+        <div class="partner-name">{{ row.partner_name }}</div>
+        <div class="partner-score-num">{{ row.health_score }}<span class="partner-score-denom">/100</span></div>
+        <div class="partner-score-label">Health Score</div>
+        {% if row.classification == 'Top Performer' %}
+          <span class="partner-badge badge-top">Top Performer</span>
+        {% elif row.classification == 'Amplifier' %}
+          <span class="partner-badge badge-amp">Amplifier</span>
+        {% elif row.classification == 'Quality Niche' %}
+          <span class="partner-badge badge-niche">Quality Niche</span>
+        {% else %}
+          <span class="partner-badge badge-weak">{{ row.classification }}</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="section-title">Top <span class="accent">Partner</span></div>
+    <p style="color:#6C757D; padding: 20px 0;">Nessun dato partner disponibile per il periodo.</p>
+    {% endif %}
+
+    <!-- SEZIONE 4: CHANNEL BREAKDOWN — BARRE ────────────────── -->
+    {% if channel_rows %}
+    <div class="section-title">Performance per <span class="accent">Canale</span></div>
+    <div class="channel-list">
+      {% for row in channel_rows %}
+      {% set bar_w = 100 - loop.index0 * 22 %}
+      {% if bar_w < 15 %}{% set bar_w = 15 %}{% endif %}
+      <div class="channel-row">
+        <div class="channel-label">{{ row.channel_upper }}</div>
+        <div class="bar-wrap">
+          <div class="bar-fill" style="width: {{ bar_w }}%;"></div>
+        </div>
+        <div class="channel-stats">
+          <strong>{{ row.reach_fmt }}</strong> reach · {{ row.posts }} post
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+  </div><!-- /content -->
+
+  <!-- FOOTER ───────────────────────────────────────────────────── -->
+  <div class="footer">
+    <div><strong>ISUAL Analytics</strong> · Performance Report</div>
+    <div>{{ kpi.date_range }} · Generato automaticamente</div>
+  </div>
+
+</div><!-- /page -->
+</body>
+</html>

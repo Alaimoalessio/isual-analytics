@@ -1,7 +1,3 @@
-"""
-app.py — Dashboard Flask ISUAL (stack OOP).
-"""
-
 import os
 import sys
 import pandas as pd
@@ -10,52 +6,46 @@ from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory, render_template, Response
 from sqlalchemy import text
 
+# aggiunge la root al path per importare database, kpi e report
 ROOT = Path(__file__).resolve().parent.parent
-OOP_DIR = ROOT / "oop"
-# ROOT deve precedere oop/ nel path: evita il circular import di oop/config.py
-for _p in (str(OOP_DIR), str(ROOT)):
-    if _p in sys.path:
-        sys.path.remove(_p)
-sys.path[0:0] = [str(ROOT), str(OOP_DIR)]
+sys.path.insert(0, str(ROOT))
 
-from data_source import IsualDataSource      # noqa: E402
-from kpi_engine import IsualKPIEngine        # noqa: E402
-from chart_engine import IsualChartEngine    # noqa: E402
-from report_builder import IsualReportBuilder  # noqa: E402
-from config import DB_CONFIG, COLORS         # noqa: E402
+import database as db
+import kpi
+from report import generate_report, slugify
 
-app = Flask(__name__)
+import os
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+app = Flask(__name__,
+            static_folder=os.path.join(BASE_DIR, 'static'),
+            template_folder=os.path.join(BASE_DIR, 'dashboard', 'templates'))
 
 OUTPUT_DIR = str(ROOT / "outputs")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Engine condiviso per i check di salute: creato una sola volta e riusato.
-_health_engine = None
 
-
-def _get_health_engine():
-    """Restituisce l'engine SQLAlchemy (singleton) per db-status e health."""
-    global _health_engine
-    if _health_engine is None:
-        end = datetime.utcnow()
-        src = IsualDataSource(DB_CONFIG, end - timedelta(days=1), end)
-        _health_engine = src._get_engine()
-    return _health_engine
-
-
-def _make_source(brand_id, start_date, end_date):
-    """Crea un IsualDataSource con i parametri della richiesta."""
-    return IsualDataSource(DB_CONFIG, start_date, end_date, brand_id)
-
-
-def _get_params():
+def get_params():
     brand_id = request.args.get('brand_id', default=None, type=str)
     if brand_id == 'all' or brand_id == '':
         brand_id = None
-    days = request.args.get('days', default=30, type=int)
-    end_date = datetime.utcnow()
-    start_date = end_date - timedelta(days=days)
-    return brand_id, days, start_date, end_date
+
+    partner_id = request.args.get('partner_id', default=None, type=str)
+    if partner_id == 'all' or partner_id == '':
+        partner_id = None
+
+    date_from = request.args.get('date_from', default=None, type=str)
+    date_to   = request.args.get('date_to', default=None, type=str)
+
+    if date_from and date_to:
+        start_date = datetime.strptime(date_from, '%Y-%m-%d')
+        end_date   = datetime.strptime(date_to, '%Y-%m-%d')
+        days = (end_date - start_date).days
+    else:
+        days = request.args.get('days', default=30, type=int)
+        end_date   = datetime.utcnow()
+        start_date = end_date - timedelta(days=days)
+
+    return brand_id, partner_id, days, start_date, end_date
 
 
 @app.route('/')
@@ -68,17 +58,14 @@ def api_db_status():
     try:
         import concurrent.futures
 
-        engine = _get_health_engine()
-
-        def ping_db():
-            start_time = datetime.now()
-            with engine.connect() as conn:
+        def ping():
+            t0 = datetime.now()
+            with db.get_engine().connect() as conn:
                 conn.execute(text('SELECT 1'))
-            return (datetime.now() - start_time).total_seconds() * 1000
+            return (datetime.now() - t0).total_seconds() * 1000
 
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(ping_db)
-            latency = future.result(timeout=5.0)
+            latency = executor.submit(ping).result(timeout=5.0)
 
         return jsonify({"success": True, "status": "ok", "latency_ms": int(latency)})
     except concurrent.futures.TimeoutError:
@@ -90,10 +77,10 @@ def api_db_status():
 @app.route('/api/health')
 def api_health():
     try:
-        start_time = datetime.now()
-        with _get_health_engine().connect() as conn:
+        t0 = datetime.now()
+        with db.get_engine().connect() as conn:
             conn.execute(text('SELECT 1'))
-        latency = (datetime.now() - start_time).total_seconds() * 1000
+        latency = (datetime.now() - t0).total_seconds() * 1000
         return jsonify({"success": True, "status": "ok", "latency_ms": int(latency)})
     except Exception as e:
         return jsonify({"success": False, "status": "error", "error": str(e)}), 500
@@ -102,8 +89,19 @@ def api_health():
 @app.route('/api/brands')
 def api_brands():
     try:
-        source = _make_source(None, datetime.utcnow() - timedelta(days=1), datetime.utcnow())
-        df = source.fetch_brands()
+        df = db.get_brands()
+        return jsonify({"success": True, "data": df.to_dict('records')})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/filter/partners')
+def api_filter_partners():
+    try:
+        brand_id = request.args.get('brand_id', default=None, type=str)
+        if brand_id == 'all' or brand_id == '':
+            brand_id = None
+        df = db.get_partners_for_filter(brand_id)
         return jsonify({"success": True, "data": df.to_dict('records')})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -112,93 +110,88 @@ def api_brands():
 @app.route('/api/kpi')
 def api_kpi():
     try:
-        brand_id, days, start_date, end_date = _get_params()
+        brand_id, partner_id, days, start_date, end_date = get_params()
 
-        # Periodo corrente
-        source = _make_source(brand_id, start_date, end_date)
-        kpi_engine = IsualKPIEngine(source)
-        kpi_data = kpi_engine.calc_overview()
+        df_overview = db.get_overview(brand_id, partner_id, start_date, end_date)
+        df_amplif   = db.get_amplification(brand_id, partner_id, start_date, end_date)
+        df_adoption = db.get_adoption(brand_id, partner_id, start_date, end_date)
 
-        # Override etichette per valori dinamici dalla richiesta
-        kpi_data['period_label'] = f"Ultimi {days} giorni"
-        kpi_data['date_range'] = (
-            f"{start_date.strftime('%d/%m/%Y')} – {end_date.strftime('%d/%m/%Y')}"
-        )
+        # Network Adoption è una metrica di rete: con un singolo partner filtrato va mostrata N/A.
+        # Stessa logica di report.py (partner_filtered=bool(partner_id)) per coerenza dashboard/PDF.
+        kpi_data = kpi.calc_overview(df_overview, df_amplif, df_adoption, days, start_date, end_date,
+                                     partner_filtered=bool(partner_id))
 
-        # Periodo precedente per trend
-        prev_end_date = start_date
-        prev_start_date = prev_end_date - timedelta(days=days)
+        # calcola trend confrontando col periodo precedente
+        prev_end   = start_date
+        prev_start = prev_end - timedelta(days=days)
 
         try:
-            curr_overview = source.fetch_overview()
-            curr_row = curr_overview.iloc[0]
+            curr_row = df_overview.iloc[0]
+            prev_ov  = db.get_overview(brand_id, partner_id, prev_start, prev_end)
+            prev_row = prev_ov.iloc[0]
 
-            prev_source = _make_source(brand_id, prev_start_date, prev_end_date)
-            prev_overview = prev_source.fetch_overview()
-            prev_row = prev_overview.iloc[0]
-
-            def calc_delta(curr, prev):
+            def delta(curr, prev):
                 curr = float(curr) if pd.notna(curr) else 0
                 prev = float(prev) if pd.notna(prev) else 0
-                if prev == 0:
-                    return None
-                return ((curr - prev) / prev) * 100
+                return None if prev == 0 else ((curr - prev) / prev) * 100
 
-            def get_direction(trend_val):
-                if trend_val is None:
-                    return None
-                if abs(trend_val) < 1.0:
-                    return "flat"
-                return "up" if trend_val > 0 else "down"
+            def direction(t):
+                if t is None: return None
+                return "flat" if abs(t) < 1.0 else ("up" if t > 0 else "down")
 
-            prev_reach = float(prev_row['total_reach']) if pd.notna(prev_row['total_reach']) else 0
-            prev_engagement = float(prev_row['total_engagement']) if pd.notna(prev_row['total_engagement']) else 0
-            prev_er = (prev_engagement / prev_reach * 100) if prev_reach > 0 else 0
+            prev_reach      = float(prev_row['total_reach'])      if pd.notna(prev_row['total_reach'])      else 0
+            prev_engagement = float(prev_row['total_engagement'])  if pd.notna(prev_row['total_engagement'])  else 0
+            prev_er         = (prev_engagement / prev_reach * 100) if prev_reach > 0 else 0
 
-            prev_amp_df = prev_source.fetch_amplification()
+            prev_amp_df = db.get_amplification(brand_id, partner_id, prev_start, prev_end)
             if not prev_amp_df.empty:
-                amp_row = prev_amp_df.set_index("source")["reach"]
-                prev_brand_reach = float(amp_row.get("brand", 0)) if pd.notna(amp_row.get("brand", 0)) else 0
-                prev_amp_factor = (prev_reach / prev_brand_reach) if prev_brand_reach > 0 else 0
+                amp_row         = prev_amp_df.set_index("source")["reach"]
+                prev_br         = float(amp_row.get("brand", 0)) if pd.notna(amp_row.get("brand", 0)) else 0
+                prev_amp_factor = (prev_reach / prev_br) if prev_br > 0 else 0
             else:
                 prev_amp_factor = 0
 
-            prev_adp_df = prev_source.fetch_adoption()
+            prev_adp_df = db.get_adoption(brand_id, partner_id, prev_start, prev_end)
             if not prev_adp_df.empty:
-                adp_row = prev_adp_df.iloc[0]
-                prev_active = int(adp_row["active_partners"]) if pd.notna(adp_row["active_partners"]) else 0
-                prev_total = int(adp_row["total_partners"]) if pd.notna(adp_row["total_partners"]) else 0
-                prev_adp_pct = (prev_active / prev_total * 100) if prev_total > 0 else 0
+                adp_row  = prev_adp_df.iloc[0]
+                prev_act = int(adp_row["active_partners"]) if pd.notna(adp_row["active_partners"]) else 0
+                prev_tot = int(adp_row["total_partners"])  if pd.notna(adp_row["total_partners"])  else 0
+                prev_adp = (prev_act / prev_tot * 100) if prev_tot > 0 else 0
             else:
-                prev_adp_pct = 0
+                prev_adp = 0
 
             trends = {
-                'total_reach':       calc_delta(curr_row['total_reach'],       prev_row['total_reach']),
-                'total_impressions': calc_delta(curr_row['total_impressions'],  prev_row['total_impressions']),
-                'engagement_rate':   calc_delta(kpi_data['er_raw'],             prev_er),
-                'total_posts':       calc_delta(curr_row['total_posts'],        prev_row['total_posts']),
-                'amplification':     calc_delta(kpi_data['amp_raw'],            prev_amp_factor),
-                'adoption_pct':      calc_delta(kpi_data['adoption_raw'],       prev_adp_pct),
+                'total_reach':       delta(curr_row['total_reach'],      prev_row['total_reach']),
+                'total_impressions': delta(curr_row['total_impressions'], prev_row['total_impressions']),
+                'engagement_rate':   delta(kpi_data['er_raw'],            prev_er),
+                'total_posts':       delta(curr_row['total_posts'],       prev_row['total_posts']),
+                'amplification':     delta(kpi_data['amp_raw'],           prev_amp_factor),
+                'adoption_pct':      delta(kpi_data['adoption_raw'],      prev_adp),
             }
 
-            for key, trend_val in trends.items():
+            for key, t in trends.items():
                 if key in kpi_data:
-                    kpi_data[key] = {
-                        "value":     kpi_data[key],
-                        "trend":     trend_val,
-                        "direction": get_direction(trend_val),
-                    }
+                    kpi_data[key] = {"value": kpi_data[key], "trend": t, "direction": direction(t)}
+
         except Exception as e:
-            print("Trend calc error:", e)
-            keys = [
-                'total_reach', 'total_impressions', 'engagement_rate',
-                'total_posts', 'amplification', 'adoption_pct',
-            ]
-            for key in keys:
+            print("Trend error:", e)
+            for key in ['total_reach', 'total_impressions', 'engagement_rate',
+                        'total_posts', 'amplification', 'adoption_pct']:
                 if key in kpi_data:
                     kpi_data[key] = {"value": kpi_data[key], "trend": None, "direction": None}
 
-        return jsonify({"success": True, "data": kpi_data})
+        # Engagement Totale e Frequency non hanno un confronto storico (nessun trend calcolato):
+        # le avvolgo nella stessa forma {value, trend, direction} delle altre card, con trend
+        # assente → il frontend mostra "N/D" al posto dell'indicatore, senza rompersi.
+        for key in ['total_engagement', 'frequency']:
+            if key in kpi_data and not isinstance(kpi_data[key], dict):
+                kpi_data[key] = {"value": kpi_data[key], "trend": None, "direction": None}
+
+        # configurazione ordinata delle KPI card visibili per il brand (stessa fonte del PDF);
+        # fallback all'ordine di default se brand_id assente o brand senza config.
+        kpi_config = db.get_kpi_config(brand_id) or db.DEFAULT_KPI_ORDER
+
+        return jsonify({"success": True, "data": kpi_data, "kpi_config": kpi_config})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -206,14 +199,12 @@ def api_kpi():
 @app.route('/api/partners')
 def api_partners():
     try:
-        brand_id, days, start_date, end_date = _get_params()
-        source = _make_source(brand_id, start_date, end_date)
-        df_partners = source.fetch_partner_stats()
-        if df_partners.empty:
+        brand_id, partner_id, days, start_date, end_date = get_params()
+        df = db.get_partner_stats(brand_id, partner_id, start_date, end_date)
+        if df.empty:
             return jsonify({"success": True, "data": []})
-        kpi_engine = IsualKPIEngine(source)
-        df_health = kpi_engine.calc_partner_health(df_partners)
-        return jsonify({"success": True, "data": df_health.head(3).to_dict('records')})
+        result = kpi.calc_partner_health(df)
+        return jsonify({"success": True, "data": result.head(3).to_dict('records')})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -221,13 +212,11 @@ def api_partners():
 @app.route('/api/top-partners')
 def api_top_partners():
     try:
-        brand_id, days, start_date, end_date = _get_params()
-        source = _make_source(brand_id, start_date, end_date)
-        df_partners = source.fetch_partner_stats()
-        if df_partners.empty:
+        brand_id, partner_id, days, start_date, end_date = get_params()
+        df = db.get_partner_stats(brand_id, partner_id, start_date, end_date)
+        if df.empty:
             return jsonify({"success": True, "data": []})
-        kpi_engine = IsualKPIEngine(source)
-        df_health = kpi_engine.calc_partner_health(df_partners)
+        result = kpi.calc_partner_health(df)
 
         def classify_v2(score):
             if score >= 80: return "Top Performer"
@@ -235,8 +224,8 @@ def api_top_partners():
             if score >= 40: return "Quality Niche"
             return "Weak"
 
-        df_health["classification"] = df_health["health_score"].apply(classify_v2)
-        return jsonify({"success": True, "data": df_health.head(3).to_dict('records')})
+        result["classification"] = result["health_score"].apply(classify_v2)
+        return jsonify({"success": True, "data": result.head(3).to_dict('records')})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -244,29 +233,36 @@ def api_top_partners():
 @app.route('/api/chart/trend')
 def api_chart_trend():
     try:
-        brand_id, days, start_date, end_date = _get_params()
-        source = _make_source(brand_id, start_date, end_date)
-        df_trend = source.fetch_weekly_trend()
-        if df_trend.empty:
+        brand_id, partner_id, days, start_date, end_date = get_params()
+        df    = db.get_weekly_trend(brand_id, partner_id, start_date, end_date)
+        if df.empty:
             return jsonify({"success": True, "data": {"chart": ""}})
-        chart_engine = IsualChartEngine(COLORS)
-        chart_b64 = chart_engine.trend_chart(df_trend)
-        return jsonify({"success": True, "data": {"chart": chart_b64}})
+            
+        if brand_id:
+            brand_colors = db.get_brand_settings(brand_id)
+        else:
+            brand_colors = {
+                'primary_color': '#1C2B46',
+                'secondary_color': '#F24C27',
+                'accent_color': '#F24C27'
+            }
+            
+        chart = kpi.make_trend_chart(df, brand_colors)
+        return jsonify({"success": True, "data": {"chart": chart}})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route('/api/trend-chart')
-def api_trend_chart_v2():
+def api_trend_chart():
     try:
         metric = request.args.get('metric', 'reach')
         if metric not in ['reach', 'impressions', 'engagement']:
             metric = 'reach'
 
-        brand_id, days, start_date, end_date = _get_params()
-        source = _make_source(brand_id, start_date, end_date)
-        where, params = source._brand_filter(alias="pub")
-
+        brand_id, partner_id, days, start_date, end_date = get_params()
+        where, params = db.brand_filter(alias="pub", brand_id=brand_id, partner_id=partner_id,
+                                        start_date=start_date, end_date=end_date)
         sql = f"""
             SELECT
                 DATE(pub.published_at)   AS date,
@@ -276,7 +272,7 @@ def api_trend_chart_v2():
             GROUP BY date
             ORDER BY date
         """
-        with source._get_engine().connect() as conn:
+        with db.get_engine().connect() as conn:
             df = pd.read_sql(sql, conn, params=tuple(params))
 
         if df.empty:
@@ -291,41 +287,62 @@ def api_trend_chart_v2():
 @app.route('/api/generate', methods=['POST'])
 def api_generate():
     try:
-        body = request.get_json() or {}
-        brand_id = body.get('brand_id')
+        data       = request.get_json() or {}
+        brand_id   = data.get('brand_id')
+        partner_id = data.get('partner_id')
+        days       = data.get('days', 30)
+        date_from  = data.get('date_from')
+        date_to    = data.get('date_to')
+
         if brand_id == 'all' or brand_id == '':
             brand_id = None
 
-        days = body.get('days')
-        end_date = datetime.utcnow()
-        start_date = end_date - timedelta(days=int(days)) if days else end_date - timedelta(days=30)
+        if partner_id == 'all' or partner_id == '':
+            partner_id = None
 
-        output_path = str(
-            ROOT / "outputs" / f"isual_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        )
+        # costruisce i parametri per report.py
+        import subprocess, sys
+        cmd = [sys.executable, 'report.py']
 
-        source = _make_source(brand_id, start_date, end_date)
-        kpi_engine = IsualKPIEngine(source)
-        chart_engine = IsualChartEngine(COLORS)
-        builder = IsualReportBuilder(kpi_engine, chart_engine, template_dir="templates")
-        generated_file = builder.build(output_path)
+        if brand_id:
+            cmd += ['--brand-id', brand_id]
 
-        return jsonify({
-            "success": True,
-            "message": "Report generato con successo!",
-            "file": os.path.basename(generated_file),
-        })
+        if partner_id:
+            cmd += ['--partner-id', partner_id]
+
+        if date_from and date_to:
+            cmd += ['--date-from', date_from, '--date-to', date_to]
+        else:
+            cmd += ['--days', str(days)]
+
+        # naming standardizzato: isual_report_[brand-slug]_[partner-slug]_[YYYYMMDD]_[HHMMSS_ms].pdf
+        # brand-slug e partner-slug sono SEMPRE presenti (mai omessi), cosi' in Storico Report
+        # si distingue a colpo d'occhio un report aggregato da uno filtrato, per qualunque combinazione di filtri
+        brand_name = db.get_brand_name(brand_id) if brand_id else None
+        brand_slug = slugify(brand_name) or "tutti-brand"
+
+        partner_name = db.get_partner_name(partner_id) if partner_id else None
+        partner_slug = slugify(partner_name) or "tutti-partner"
+
+        # millisecondi in coda al timestamp: due generazioni ravvicinate per lo stesso
+        # brand+partner nello stesso secondo altrimenti si sovrascriverebbero silenziosamente
+        timestamp   = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]
+        output_path = str(ROOT / "outputs" / f"isual_report_{brand_slug}_{partner_slug}_{timestamp}.pdf")
+        cmd += ['--out', output_path]
+
+        subprocess.run(cmd, check=True, cwd=str(ROOT))
+
+        return jsonify({"success": True, "message": "Report generato!", "file": os.path.basename(output_path)})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route('/api/export-csv')
-def api_export_csv_v2():
+def api_export_csv():
     try:
-        brand_id, days, start_date, end_date = _get_params()
-        source = _make_source(brand_id, start_date, end_date)
-        where, params = source._brand_filter(alias="pub")
-
+        brand_id, partner_id, days, start_date, end_date = get_params()
+        where, params = db.brand_filter(alias="pub", brand_id=brand_id, partner_id=partner_id,
+                                        start_date=start_date, end_date=end_date)
         sql = f"""
             SELECT
                 pub.id,
@@ -341,14 +358,12 @@ def api_export_csv_v2():
             {where}
             ORDER BY pub.published_at DESC
         """
-        with source._get_engine().connect() as conn:
+        with db.get_engine().connect() as conn:
             df = pd.read_sql(sql, conn, params=tuple(params))
 
-        csv_data = df.to_csv(index=False)
         filename = f"isual_export_{datetime.now().strftime('%Y-%m-%d')}.csv"
-
         return Response(
-            csv_data,
+            df.to_csv(index=False),
             mimetype="text/csv",
             headers={"Content-disposition": f"attachment; filename={filename}"},
         )
@@ -372,6 +387,105 @@ def api_reports():
                 })
     reports.sort(key=lambda x: x["timestamp"], reverse=True)
     return jsonify({"success": True, "data": reports})
+
+
+@app.route('/api/reports/<filename>', methods=['DELETE'])
+def api_delete_report(filename):
+    try:
+        # Previeni directory traversal
+        if '..' in filename or '/' in filename or '\\' in filename:
+            return jsonify({"success": False, "error": "Nome file non valido"}), 400
+            
+        filepath = os.path.join(OUTPUT_DIR, filename)
+        if os.path.exists(filepath):
+            os.remove(filepath)
+            return jsonify({"success": True, "message": "Report eliminato"})
+        else:
+            return jsonify({"success": False, "error": "File non trovato"}), 404
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/reports/bulk-delete', methods=['POST'])
+def api_bulk_delete_reports():
+    try:
+        data = request.get_json() or {}
+        filenames = data.get('filenames', [])
+        
+        if not isinstance(filenames, list) or len(filenames) == 0:
+            return jsonify({"success": False, "error": "Nessun file selezionato"}), 400
+            
+        deleted_count = 0
+        for filename in filenames:
+            if '..' in filename or '/' in filename or '\\' in filename:
+                continue # Salta nomi file non validi per sicurezza
+                
+            filepath = os.path.join(OUTPUT_DIR, filename)
+            if os.path.exists(filepath):
+                os.remove(filepath)
+                deleted_count += 1
+                
+        return jsonify({
+            "success": True, 
+            "message": f"{deleted_count} report eliminat{'o' if deleted_count == 1 else 'i'} con successo"
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/kpi-config/all')
+def api_kpi_config_all():
+    # TUTTE le 8 KPI (visibili E nascoste) per il pannello di configurazione.
+    # Config globale: brand_id opzionale; senza, legge da un brand di riferimento.
+    # NB: endpoint separato da /api/kpi (che continua a restituire solo le visibili).
+    try:
+        brand_id = request.args.get('brand_id', default=None, type=str)
+        if brand_id in ('all', ''):
+            brand_id = None
+        kpi_config = db.get_kpi_config_all(brand_id)
+        return jsonify({"success": True, "kpi_config": kpi_config})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/kpi-config/save', methods=['POST'])
+def api_save_kpi_config():
+    # salva ordine e visibilità delle KPI card in modo GLOBALE (tutti i brand).
+    # L'ordine è dedotto dalla sequenza ricevuta; il set deve contenere esattamente
+    # gli 8 kpi_key noti (nessuno mancante, sconosciuto o duplicato).
+    try:
+        data = request.get_json(silent=True) or {}
+        kpi_order = data.get('kpi_order')
+
+        # validazione fail-fast: nessuna scrittura se l'input non è consistente
+        if not isinstance(kpi_order, list) or len(kpi_order) == 0:
+            return jsonify({"success": False, "error": "'kpi_order' mancante o vuoto"}), 400
+
+        noti = {c["kpi_key"] for c in db.DEFAULT_KPI_ORDER}
+        visti = []
+        for i, item in enumerate(kpi_order):
+            if (not isinstance(item, dict)
+                    or not isinstance(item.get("kpi_key"), str)
+                    or not isinstance(item.get("visibile"), bool)):
+                return jsonify({"success": False,
+                                "error": f"elemento non valido in posizione {i}: "
+                                         "serve kpi_key (string) e visibile (bool)"}), 400
+            k = item["kpi_key"]
+            if k not in noti:
+                return jsonify({"success": False, "error": f"kpi_key sconosciuto: '{k}'"}), 400
+            if k in visti:
+                return jsonify({"success": False, "error": f"kpi_key duplicato: '{k}'"}), 400
+            visti.append(k)
+
+        mancanti = noti - set(visti)
+        if mancanti:
+            return jsonify({"success": False, "error": f"kpi_key mancanti: {sorted(mancanti)}"}), 400
+
+        # input validato: scrittura globale in transazione unica (commit/rollback in database.py)
+        updated = db.save_kpi_config_global(kpi_order)
+        return jsonify({"success": True, "updated": updated})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route('/outputs/<filename>')
