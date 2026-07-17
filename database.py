@@ -198,29 +198,41 @@ def get_amplification(brand_id, partner_id, start_date, end_date):
 def get_adoption(brand_id, partner_id, start_date, end_date):
     where, params = brand_filter(brand_id=brand_id, partner_id=partner_id, start_date=start_date, end_date=end_date)
 
-    # Il denominatore deve coprire lo stesso insieme di partner del numeratore:
-    # senza il filtro partner, un tag da 5 partner tutti attivi su un brand da 50
-    # darebbe 5/50 = 10% invece di 100%.
-    sub_conditions = []
-    sub_params = []
+    # Numeratore e denominatore devono descrivere lo STESSO insieme di partner, altrimenti
+    # la percentuale e' priva di senso. Due modi in cui divergevano:
+    #  - denominatore troppo largo: un tag da 5 partner tutti attivi su un brand da 50
+    #    dava 5/50 = 10% invece di 100%;
+    #  - numeratore troppo largo: publications contiene partner_id di partner cancellati
+    #    (orfani), contati fra gli attivi ma assenti dal denominatore -> 3/1 = 300%.
+    # Da qui l'unica condizione di appartenenza, costruita una volta e applicata a
+    # entrambi i lati: l'invariante attivi <= totali vale per costruzione.
+    scope_conditions = []
+    scope_params = []
     if brand_id:
-        sub_conditions.append("brand_id = %s")
-        sub_params.append(brand_id)
+        scope_conditions.append("{alias}brand_id = %s")
+        scope_params.append(brand_id)
 
     partner_ids = normalize_partner_ids(partner_id)
     if partner_ids is not None:
         if partner_ids:
-            sub_conditions.append("id = ANY(%s::uuid[])")
-            sub_params.append(partner_ids)
+            scope_conditions.append("{alias}id = ANY(%s::uuid[])")
+            scope_params.append(partner_ids)
         else:
-            sub_conditions.append("FALSE")
+            scope_conditions.append("FALSE")
 
-    sub_where = ("WHERE " + " AND ".join(sub_conditions)) if sub_conditions else ""
+    # denominatore: COUNT su partners, colonne non qualificate
+    sub_where = ("WHERE " + " AND ".join(c.format(alias="") for c in scope_conditions)) if scope_conditions else ""
+
+    # numeratore: le stesse condizioni applicate al partner della pubblicazione, via EXISTS.
+    # Senza questo, un partner_id orfano gonfia gli attivi.
+    exists_where = " AND ".join(["p.id = pub.partner_id"] + [c.format(alias="p.") for c in scope_conditions])
 
     sql = f"""
         SELECT
-            COUNT(DISTINCT pub.partner_id)
-                FILTER (WHERE pub.partner_id IS NOT NULL)   AS active_partners,
+            COUNT(DISTINCT pub.partner_id) FILTER (
+                WHERE pub.partner_id IS NOT NULL
+                  AND EXISTS (SELECT 1 FROM partners p WHERE {exists_where})
+            )                                               AS active_partners,
             (
                 SELECT COUNT(DISTINCT id)
                 FROM partners
@@ -229,8 +241,9 @@ def get_adoption(brand_id, partner_id, start_date, end_date):
         FROM publications pub
         {where}
     """
-    # i parametri della subquery vanno prima di quelli del WHERE principale
-    return run_query(sql, sub_params + params)
+    # ordine dei parametri = ordine di apparizione nella SQL:
+    # EXISTS (numeratore) -> subquery (denominatore) -> WHERE principale
+    return run_query(sql, scope_params + scope_params + params)
 
 
 def get_weekly_trend(brand_id, partner_id, start_date, end_date):
