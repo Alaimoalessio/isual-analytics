@@ -30,12 +30,15 @@ def slugify(text):
 
 
 def resolve_filter(partner_id=None, tag_id=None, target_id=None):
-    # Risolve il filtro partner/tag/target in una tripla (partner_ids, single_partner, label).
+    # Risolve il filtro partner/tag/target in
+    # (partner_ids, single_partner, filter_label, filter_slug, filter_kind).
     # Rispecchia get_params() della dashboard: gli stessi input devono produrre gli stessi
     # numeri nel PDF e a schermo.
     #
     # partner_ids: None = nessun filtro; lista (anche vuota) = filtro attivo.
     # Un tag senza partner associati da' [] -> zero risultati, non "tutti".
+    # filter_kind: 'partner' | 'tag' | 'target' | None (nessun filtro), usato dal template
+    # per parlare del filtro con il suo nome.
     selected = [k for k, v in (("partner", partner_id), ("tag", tag_id), ("target", target_id)) if v]
     if len(selected) > 1:
         raise ValueError(
@@ -47,17 +50,20 @@ def resolve_filter(partner_id=None, tag_id=None, target_id=None):
         # single_partner dipende dalla richiesta, non dal risultato: un tag che risolve
         # a un solo partner NON e' un partner singolo e non deve dare N/A su Network Adoption.
         name = db.get_partner_name(partner_id)
-        return [partner_id], True, f"Partner: {name or partner_id}", slugify(name) or "tutti-partner"
+        return ([partner_id], True, f"Partner: {name or partner_id}",
+                slugify(name) or "tutti-partner", "partner")
 
     if tag_id:
         name = db.get_tag_name(tag_id)
-        return db.get_partner_ids_by_tag(tag_id), False, f"Tag: {name or tag_id}", f"tag-{slugify(name) or tag_id}"
+        return (db.get_partner_ids_by_tag(tag_id), False, f"Tag: {name or tag_id}",
+                f"tag-{slugify(name) or tag_id}", "tag")
 
     if target_id:
         name = db.get_target_name(target_id)
-        return db.get_partner_ids_by_target(target_id), False, f"Target: {name or target_id}", f"target-{slugify(name) or target_id}"
+        return (db.get_partner_ids_by_target(target_id), False, f"Target: {name or target_id}",
+                f"target-{slugify(name) or target_id}", "target")
 
-    return None, False, "Tutti i partner", "tutti-partner"
+    return None, False, "Tutti i partner", "tutti-partner", None
 
 
 def generate_report(brand_id=None, partner_id=None, tag_id=None, target_id=None,
@@ -72,7 +78,8 @@ def generate_report(brand_id=None, partner_id=None, tag_id=None, target_id=None,
         start_date = end_date - timedelta(days=days)
 
     # filtro selezionato (partner, tag o target), per header e filename del PDF
-    partner_ids, single_partner, filter_label, filter_slug = resolve_filter(partner_id, tag_id, target_id)
+    partner_ids, single_partner, filter_label, filter_slug, filter_kind = resolve_filter(
+        partner_id, tag_id, target_id)
 
     print(f"[ISUAL] Periodo: {start_date.date()} → {end_date.date()}")
     print(f"[ISUAL] Brand: {brand_id or 'tutti'}")
@@ -172,6 +179,7 @@ def generate_report(brand_id=None, partner_id=None, tag_id=None, target_id=None,
         colors=brand_colors,
         filter_label=filter_label,
         single_partner=single_partner,
+        filter_kind=filter_kind,
     )
 
     out_dir = os.path.dirname(output_path)

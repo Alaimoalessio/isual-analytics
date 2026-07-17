@@ -414,8 +414,21 @@
             </td>
           </tr>
           {% else %}
+          {# tabella vuota per due motivi diversi: gruppo senza partner, oppure partner
+             inattivi nel periodo. total_partners e' il denominatore di Network Adoption
+             (la "Y" di "X/Y partner attivi"), ed e' una stringa: confronto con '0'. #}
           <tr><td colspan="8" style="text-align:center;color:#6C757D;padding:20px;">
-            Nessun dato partner disponibile.
+            {% if filter_kind in ('tag', 'target') %}
+              {% if kpi.total_partners == '0' %}
+                Nessun partner associato a questo {{ filter_kind }}.
+              {% else %}
+                {{ kpi.total_partners }} partner
+                {{ 'associato' if kpi.total_partners == '1' else 'associati' }}
+                a questo {{ filter_kind }}, nessuna pubblicazione nel periodo selezionato.
+              {% endif %}
+            {% else %}
+              Nessun dato partner disponibile.
+            {% endif %}
           </td></tr>
           {% endfor %}
         </tbody>
