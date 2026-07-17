@@ -355,6 +355,8 @@
     </div>
 
     <!-- ── SECTION 4: PARTNER LEADERBOARD ──────────────────────── -->
+    {# con un solo partner la classifica e' una riga sola: il nome e' gia' nell'header #}
+    {% if not single_partner %}
     <div class="section-title">Partner Leaderboard</div>
     <div class="table-card">
       <table>
@@ -422,6 +424,7 @@
         Health Score = 40% Activation + 35% Regularity + 25% Performance · ALERT se &lt;70 · VIP se ≥85
       </div>
     </div>
+    {% endif %}
 
     <!-- ── SECTION 5: CHANNEL BREAKDOWN ────────────────────────── -->
     <div class="section-title">Channel Breakdown</div>

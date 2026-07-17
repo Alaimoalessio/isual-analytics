@@ -171,6 +171,7 @@ def generate_report(brand_id=None, partner_id=None, tag_id=None, target_id=None,
         channel_rows=df_channels_ok.to_dict("records"),
         colors=brand_colors,
         filter_label=filter_label,
+        single_partner=single_partner,
     )
 
     out_dir = os.path.dirname(output_path)
