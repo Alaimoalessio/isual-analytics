@@ -21,6 +21,13 @@ outputs/
 # PDF nella root (documenti interni, non codice)
 *.pdf
 
+# Documenti Office non attinenti al progetto
+*.xlsx
+*.pptx
+
+# Loghi: binari pesanti, da ottimizzare prima di versionarli
+static/logos/
+
 # macOS
 .DS_Store
 
