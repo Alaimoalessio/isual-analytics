@@ -33,6 +33,20 @@ def fmt_number(n):
     return str(n)
 
 
+def k_scale(max_val):
+    # Decide se un asse va espresso in migliaia, in base al suo valore massimo.
+    # Sotto i 1000 la scala K schiaccerebbe tutto a "0K" (un reach di 6 -> 0.006 -> "0K"),
+    # quindi si resta sui numeri grezzi.
+    # Restituisce (divisore, suffisso_unita, formatter per l'asse) da applicare INSIEME:
+    # scalare i dati senza adeguare formatter e suffisso e' esattamente il bug che
+    # produceva "0K" ovunque.
+    use_k = max_val >= 1000
+    divisor = 1000 if use_k else 1
+    suffix = " (K)" if use_k else ""
+    formatter = mticker.FuncFormatter(lambda x, _: f"{x:.0f}K" if use_k else f"{x:.0f}")
+    return divisor, suffix, formatter
+
+
 def safe(val, default=0):
     if val is None or (isinstance(val, float) and pd.isna(val)):
         return default
@@ -240,10 +254,7 @@ def make_trend_chart(df, brand_colors=None):
     fig, ax = plt.subplots(figsize=(10, 3.5))
     fig.patch.set_facecolor("white")
 
-    max_val = max(df["impressions"].max(), df["reach"].max())
-    use_k = max_val >= 1000
-    divisor = 1000 if use_k else 1
-    unit_suffix = " (K)" if use_k else ""
+    divisor, unit_suffix, y_formatter = k_scale(max(df["impressions"].max(), df["reach"].max()))
 
     ax.plot(weeks, df["impressions"] / divisor, color=primary_color,
             linewidth=2.5, marker="o", markersize=5, label=f"Impressions{unit_suffix}")
@@ -256,7 +267,7 @@ def make_trend_chart(df, brand_colors=None):
     ax.spines[["top", "right"]].set_visible(False)
     ax.spines[["left", "bottom"]].set_color("#DEE2E6")
     ax.tick_params(colors="#6C757D", labelsize=8)
-    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{x:.0f}K" if use_k else f"{x:.0f}"))
+    ax.yaxis.set_major_formatter(y_formatter)
     ax.legend(fontsize=9, framealpha=0, loc="upper left")
     ax.grid(axis="y", color="#DEE2E6", linewidth=0.5)
 
@@ -281,16 +292,18 @@ def make_channel_bar_chart(df, brand_colors=None):
     }
     colors = [channel_colors.get(c.lower(), primary_color) for c in df["channel"]]
 
-    bars = ax.barh(df["channel_upper"], df["reach"] / 1000, color=colors, height=0.5)
+    divisor, _, x_formatter = k_scale(df["reach"].max())
+
+    bars = ax.barh(df["channel_upper"], df["reach"] / divisor, color=colors, height=0.5)
     ax.set_facecolor("#F8F9FA")
     ax.spines[["top", "right", "left"]].set_visible(False)
     ax.spines["bottom"].set_color("#DEE2E6")
     ax.tick_params(colors="#6C757D", labelsize=9)
-    ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{x:.0f}K"))
+    ax.xaxis.set_major_formatter(x_formatter)
 
     for bar, val in zip(bars, df["reach"]):
         ax.text(
-            bar.get_width() + max(df["reach"]) * 0.01 / 1000,
+            bar.get_width() + max(df["reach"]) * 0.01 / divisor,
             bar.get_y() + bar.get_height() / 2,
             fmt_number(val), va="center", fontsize=8,
             color=COLORS["text_secondary"],
