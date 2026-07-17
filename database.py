@@ -25,6 +25,17 @@ def get_engine():
     return _engine
 
 
+def normalize_partner_ids(partner_id):
+    # None = nessun filtro partner; lista vuota = filtro attivo che non seleziona
+    # nessun partner (zero risultati). Le due cose non vanno confuse.
+    # Accetta un singolo id (report.py) o una lista (dashboard con Tag/Target).
+    if partner_id is None:
+        return None
+    if isinstance(partner_id, str):
+        return [partner_id]
+    return list(partner_id)
+
+
 def brand_filter(alias="pub", brand_id=None, partner_id=None, start_date=None, end_date=None):
     # clausola WHERE con filtri su periodo, brand e partner opzionali
     conditions = [
@@ -37,10 +48,16 @@ def brand_filter(alias="pub", brand_id=None, partner_id=None, start_date=None, e
     if brand_id:
         conditions.append(f"{alias}.brand_id = %s")
         params.append(brand_id)
-        
-    if partner_id:
-        conditions.append(f"{alias}.partner_id = %s")
-        params.append(partner_id)
+
+    partner_ids = normalize_partner_ids(partner_id)
+    if partner_ids is not None:
+        if partner_ids:
+            # il cast e' obbligatorio: psycopg2 adatta la lista a text[] e
+            # Postgres non ha un operatore uuid = text
+            conditions.append(f"{alias}.partner_id = ANY(%s::uuid[])")
+            params.append(partner_ids)
+        else:
+            conditions.append("FALSE")
 
     where = "WHERE " + " AND ".join(conditions)
     return where, params
@@ -65,9 +82,72 @@ def get_partners_for_filter(brand_id=None):
     return run_query(sql, params)
 
 
+def get_tags_for_brand(brand_id=None):
+    # tags e targets sono tabelle dell'app di terzi: sola lettura, soft delete
+    sql = "SELECT id, name FROM tags WHERE deleted = false"
+    params = []
+    if brand_id:
+        sql += " AND brand_id = %s"
+        params.append(brand_id)
+    sql += " ORDER BY name"
+    return run_query(sql, params)
+
+
+def get_targets_for_brand(brand_id=None):
+    sql = "SELECT id, name FROM targets WHERE deleted = false"
+    params = []
+    if brand_id:
+        sql += " AND brand_id = %s"
+        params.append(brand_id)
+    sql += " ORDER BY name"
+    return run_query(sql, params)
+
+
+def get_partner_ids_by_tag(tag_id):
+    # lista vuota = tag senza partner associati: chi chiama deve trattarla come
+    # filtro attivo a zero risultati, non come assenza di filtro
+    sql = """
+        SELECT DISTINCT pt.partner_id
+        FROM partners_tags pt
+        JOIN tags t ON t.id = pt.tag_id
+        WHERE pt.tag_id = %s
+          AND t.deleted = false
+    """
+    df = run_query(sql, [tag_id])
+    return [str(pid) for pid in df["partner_id"].tolist()]
+
+
+def get_partner_ids_by_target(target_id):
+    sql = """
+        SELECT DISTINCT pt.partner_id
+        FROM partners_targets pt
+        JOIN targets t ON t.id = pt.target_id
+        WHERE pt.target_id = %s
+          AND t.deleted = false
+    """
+    df = run_query(sql, [target_id])
+    return [str(pid) for pid in df["partner_id"].tolist()]
+
+
 def get_partner_name(partner_id):
     # nome del partner selezionato, usato nell'header e nel nome file del PDF
     df = run_query("SELECT name FROM partners WHERE id = %s", [partner_id])
+    if df.empty:
+        return None
+    return df.iloc[0]['name']
+
+
+def get_tag_name(tag_id):
+    # nome del tag selezionato, usato nell'header e nel nome file del PDF
+    df = run_query("SELECT name FROM tags WHERE id = %s AND deleted = false", [tag_id])
+    if df.empty:
+        return None
+    return df.iloc[0]['name']
+
+
+def get_target_name(target_id):
+    # nome del target selezionato, usato nell'header e nel nome file del PDF
+    df = run_query("SELECT name FROM targets WHERE id = %s AND deleted = false", [target_id])
     if df.empty:
         return None
     return df.iloc[0]['name']
@@ -117,6 +197,26 @@ def get_amplification(brand_id, partner_id, start_date, end_date):
 
 def get_adoption(brand_id, partner_id, start_date, end_date):
     where, params = brand_filter(brand_id=brand_id, partner_id=partner_id, start_date=start_date, end_date=end_date)
+
+    # Il denominatore deve coprire lo stesso insieme di partner del numeratore:
+    # senza il filtro partner, un tag da 5 partner tutti attivi su un brand da 50
+    # darebbe 5/50 = 10% invece di 100%.
+    sub_conditions = []
+    sub_params = []
+    if brand_id:
+        sub_conditions.append("brand_id = %s")
+        sub_params.append(brand_id)
+
+    partner_ids = normalize_partner_ids(partner_id)
+    if partner_ids is not None:
+        if partner_ids:
+            sub_conditions.append("id = ANY(%s::uuid[])")
+            sub_params.append(partner_ids)
+        else:
+            sub_conditions.append("FALSE")
+
+    sub_where = ("WHERE " + " AND ".join(sub_conditions)) if sub_conditions else ""
+
     sql = f"""
         SELECT
             COUNT(DISTINCT pub.partner_id)
@@ -124,15 +224,13 @@ def get_adoption(brand_id, partner_id, start_date, end_date):
             (
                 SELECT COUNT(DISTINCT id)
                 FROM partners
-                {('WHERE brand_id = %s' if brand_id else '')}
+                {sub_where}
             )                                               AS total_partners
         FROM publications pub
         {where}
     """
-    if brand_id:
-        # il parametro della subquery va prima di quelli del WHERE principale
-        params = [brand_id] + params
-    return run_query(sql, params)
+    # i parametri della subquery vanno prima di quelli del WHERE principale
+    return run_query(sql, sub_params + params)
 
 
 def get_weekly_trend(brand_id, partner_id, start_date, end_date):

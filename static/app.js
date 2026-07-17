@@ -11,6 +11,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const themeToggleBtn = document.getElementById('theme-toggle');
     const brandSelect = document.getElementById('brand-select');
     const partnerSelect = document.getElementById('partner-select');
+    const tagSelect = document.getElementById('tag-select');
+    const targetSelect = document.getElementById('target-select');
+
+    // I tre filtri (partner, tag, target) si popolano allo stesso modo: cambiano
+    // solo endpoint, chiave di storage e testo dell'opzione "tutti".
+    // Va dichiarato qui: i listener piu' sotto lo leggono in modo sincrono.
+    const FILTERS = [
+        { key: 'isual_partner', endpoint: '/api/filter/partners', allLabel: 'Tutti i partner', el: () => partnerSelect },
+        { key: 'isual_tag',     endpoint: '/api/filter/tags',     allLabel: 'Tutti i tag',     el: () => tagSelect },
+        { key: 'isual_target',  endpoint: '/api/filter/targets',  allLabel: 'Tutti i target',  el: () => targetSelect },
+    ];
+
     const periodToggle = document.getElementById('period-toggle');
     const periodBtns = periodToggle.querySelectorAll('.period-btn');
     const selectAllCheckbox = document.getElementById('select-all-reports');
@@ -138,14 +150,22 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     brandSelect.addEventListener('change', async () => {
         localStorage.setItem('isual_brand', brandSelect.value);
+        // partner, tag e target appartengono al brand: cambiando brand non hanno piu' senso
         localStorage.setItem('isual_partner', 'all');
-        await loadPartnersFilter();
+        localStorage.setItem('isual_tag', 'all');
+        localStorage.setItem('isual_target', 'all');
+        await loadFilters();
         reloadData();
     });
 
-    partnerSelect.addEventListener('change', () => {
-        localStorage.setItem('isual_partner', partnerSelect.value);
-        reloadData();
+    [partnerSelect, tagSelect, targetSelect].forEach(select => {
+        if (!select) return;
+        const { key } = FILTERS.find(f => f.el() === select);
+        select.addEventListener('change', () => {
+            localStorage.setItem(key, select.value);
+            if (select.value !== 'all') clearOtherFilters(select);
+            reloadData();
+        });
     });
     
     periodBtns.forEach(btn => {
@@ -183,7 +203,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function initDashboard() {
         checkDBHealth();
         await loadBrands();
-        await loadPartnersFilter();
+        await loadFilters();
         reloadData();
         loadReports();
     }
@@ -243,29 +263,47 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function loadPartnersFilter() {
+    async function loadFilterOptions({ key, endpoint, allLabel, el }) {
+        const select = el();
+        if (!select) return;
         try {
             const brand = brandSelect.value;
-            let url = '/api/filter/partners';
+            let url = endpoint;
             if (brand !== 'all') {
                 url += `?brand_id=${brand}`;
             }
             const response = await fetch(url);
             const result = await response.json();
-            
-            if (result.success && result.data) {
-                const savedPartner = localStorage.getItem('isual_partner') || 'all';
-                const options = result.data.map(p => `<option value="${p.id}" ${p.id == savedPartner ? 'selected' : ''}>${p.name}</option>`).join('');
-                
-                let hasSaved = result.data.some(p => p.id == savedPartner);
-                let finalPartner = hasSaved ? savedPartner : 'all';
-                if (!hasSaved) localStorage.setItem('isual_partner', 'all');
 
-                partnerSelect.innerHTML = `<option value="all" ${finalPartner === 'all' ? 'selected' : ''}>Tutti i tag</option>${options}`;
+            if (result.success && result.data) {
+                const saved = localStorage.getItem(key) || 'all';
+                const hasSaved = result.data.some(o => o.id == saved);
+                const finalValue = hasSaved ? saved : 'all';
+                if (!hasSaved) localStorage.setItem(key, 'all');
+
+                const options = result.data.map(o =>
+                    `<option value="${o.id}" ${o.id == finalValue ? 'selected' : ''}>${o.name}</option>`).join('');
+                select.innerHTML = `<option value="all" ${finalValue === 'all' ? 'selected' : ''}>${allLabel}</option>${options}`;
             }
         } catch (error) {
-            console.error('Error loading partners for filter', error);
+            console.error(`Error loading filter ${endpoint}`, error);
         }
+    }
+
+    async function loadFilters() {
+        await Promise.all(FILTERS.map(loadFilterOptions));
+    }
+
+    // I tre filtri sono alternativi: il backend applica partner > tag > target,
+    // quindi lasciarne due attivi mostrerebbe una selezione che non e' quella usata.
+    function clearOtherFilters(activeSelect) {
+        FILTERS.forEach(({ key, el }) => {
+            const select = el();
+            if (select && select !== activeSelect) {
+                select.value = 'all';
+                localStorage.setItem(key, 'all');
+            }
+        });
     }
 
     let lastUpdateDate = new Date();
@@ -329,7 +367,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function getQueryParams() {
         const brand = brandSelect.value;
         const partner = partnerSelect ? partnerSelect.value : 'all';
-        let query = `?brand_id=${brand}&partner_id=${partner}`;
+        const tag = tagSelect ? tagSelect.value : 'all';
+        const target = targetSelect ? targetSelect.value : 'all';
+        let query = `?brand_id=${brand}&partner_id=${partner}&tag_id=${tag}&target_id=${target}`;
         if (currentDays === 'custom' && customDateFrom && customDateTo) {
             query += `&date_from=${customDateFrom}&date_to=${customDateTo}`;
         } else {
@@ -351,11 +391,20 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         try {
-            const response = await fetch(`/api/kpi${getQueryParams()}`);
-            const result = await response.json();
+            const [kpiResponse, configResponse] = await Promise.all([
+                fetch(`/api/kpi${getQueryParams()}`),
+                fetch('/api/kpi-config/all')
+            ]);
+            
+            const result = await kpiResponse.json();
+            const configResult = await configResponse.json().catch(() => ({}));
 
             if (result.success) {
-                renderKPIs(result.data, result.kpi_config);
+                let hiddenCount = 0;
+                if (configResult && configResult.success && configResult.kpi_config) {
+                    hiddenCount = configResult.kpi_config.filter(k => !k.visibile).length;
+                }
+                renderKPIs(result.data, result.kpi_config, hiddenCount);
             } else {
                 showError('Errore nel caricamento KPI: ' + result.error);
                 kpiGrid.innerHTML = '<div class="kpi-card"><div class="kpi-label">Errore</div><div class="kpi-value alert">ND</div></div>';
@@ -382,8 +431,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function renderKPIs(data, kpiConfig) {
+    function renderKPIs(data, kpiConfig, hiddenCount = 0) {
         dateRangeEl.textContent = `${data.period_label} (${data.date_range})`;
+
+        const badge = document.getElementById('kpi-hidden-badge');
+        if (badge) {
+            if (hiddenCount > 0) {
+                badge.textContent = `(${hiddenCount} nascoste)`;
+                badge.style.display = 'inline-block';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
 
         // classi colore-soglia (soglie invariate rispetto a prima)
         const erClass  = data.er_raw >= 3 ? 'positive' : (data.er_raw >= 1 ? 'warning' : 'alert');
@@ -685,9 +744,13 @@ document.addEventListener('DOMContentLoaded', () => {
         spinner.classList.remove('hidden');
         
         try {
+            // stessi filtri della vista a schermo: il PDF deve riprodurre esattamente
+            // i numeri mostrati nella dashboard
             const body = {
                 brand_id: brandSelect.value,
                 partner_id: partnerSelect ? partnerSelect.value : 'all',
+                tag_id: tagSelect ? tagSelect.value : 'all',
+                target_id: targetSelect ? targetSelect.value : 'all',
             };
             // aggiunge periodo: custom date o days
             if (currentDays === 'custom') {

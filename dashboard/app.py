@@ -24,14 +24,32 @@ OUTPUT_DIR = str(ROOT / "outputs")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
-def get_params():
-    brand_id = request.args.get('brand_id', default=None, type=str)
-    if brand_id == 'all' or brand_id == '':
-        brand_id = None
+def _clean(value):
+    # 'all' e stringa vuota significano "nessuna selezione"
+    return None if value in ('all', '') else value
 
-    partner_id = request.args.get('partner_id', default=None, type=str)
-    if partner_id == 'all' or partner_id == '':
-        partner_id = None
+
+def get_params():
+    brand_id = _clean(request.args.get('brand_id', default=None, type=str))
+
+    partner_id = _clean(request.args.get('partner_id', default=None, type=str))
+    tag_id     = _clean(request.args.get('tag_id', default=None, type=str))
+    target_id  = _clean(request.args.get('target_id', default=None, type=str))
+
+    # single_partner dipende dalla richiesta, non dal risultato: un tag che risolve
+    # a un solo partner NON e' un partner singolo e non deve dare N/A su Network Adoption.
+    single_partner = partner_id is not None
+
+    # partner_ids: None = nessun filtro; lista (anche vuota) = filtro attivo.
+    # Un tag senza partner associati da' [] -> zero risultati, non "tutti".
+    if single_partner:
+        partner_ids = [partner_id]
+    elif tag_id is not None:
+        partner_ids = db.get_partner_ids_by_tag(tag_id)
+    elif target_id is not None:
+        partner_ids = db.get_partner_ids_by_target(target_id)
+    else:
+        partner_ids = None
 
     date_from = request.args.get('date_from', default=None, type=str)
     date_to   = request.args.get('date_to', default=None, type=str)
@@ -45,7 +63,7 @@ def get_params():
         end_date   = datetime.utcnow()
         start_date = end_date - timedelta(days=days)
 
-    return brand_id, partner_id, days, start_date, end_date
+    return brand_id, partner_ids, single_partner, days, start_date, end_date
 
 
 @app.route('/')
@@ -98,10 +116,28 @@ def api_brands():
 @app.route('/api/filter/partners')
 def api_filter_partners():
     try:
-        brand_id = request.args.get('brand_id', default=None, type=str)
-        if brand_id == 'all' or brand_id == '':
-            brand_id = None
+        brand_id = _clean(request.args.get('brand_id', default=None, type=str))
         df = db.get_partners_for_filter(brand_id)
+        return jsonify({"success": True, "data": df.to_dict('records')})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/filter/tags')
+def api_filter_tags():
+    try:
+        brand_id = _clean(request.args.get('brand_id', default=None, type=str))
+        df = db.get_tags_for_brand(brand_id)
+        return jsonify({"success": True, "data": df.to_dict('records')})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/filter/targets')
+def api_filter_targets():
+    try:
+        brand_id = _clean(request.args.get('brand_id', default=None, type=str))
+        df = db.get_targets_for_brand(brand_id)
         return jsonify({"success": True, "data": df.to_dict('records')})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -110,16 +146,17 @@ def api_filter_partners():
 @app.route('/api/kpi')
 def api_kpi():
     try:
-        brand_id, partner_id, days, start_date, end_date = get_params()
+        brand_id, partner_ids, single_partner, days, start_date, end_date = get_params()
 
-        df_overview = db.get_overview(brand_id, partner_id, start_date, end_date)
-        df_amplif   = db.get_amplification(brand_id, partner_id, start_date, end_date)
-        df_adoption = db.get_adoption(brand_id, partner_id, start_date, end_date)
+        df_overview = db.get_overview(brand_id, partner_ids, start_date, end_date)
+        df_amplif   = db.get_amplification(brand_id, partner_ids, start_date, end_date)
+        df_adoption = db.get_adoption(brand_id, partner_ids, start_date, end_date)
 
         # Network Adoption è una metrica di rete: con un singolo partner filtrato va mostrata N/A.
-        # Stessa logica di report.py (partner_filtered=bool(partner_id)) per coerenza dashboard/PDF.
+        # Con un filtro Tag/Target si calcola normalmente sul gruppo, quindi il flag segue la
+        # selezione (single_partner) e non la lunghezza della lista.
         kpi_data = kpi.calc_overview(df_overview, df_amplif, df_adoption, days, start_date, end_date,
-                                     partner_filtered=bool(partner_id))
+                                     partner_filtered=single_partner)
 
         # calcola trend confrontando col periodo precedente
         prev_end   = start_date
@@ -127,7 +164,7 @@ def api_kpi():
 
         try:
             curr_row = df_overview.iloc[0]
-            prev_ov  = db.get_overview(brand_id, partner_id, prev_start, prev_end)
+            prev_ov  = db.get_overview(brand_id, partner_ids, prev_start, prev_end)
             prev_row = prev_ov.iloc[0]
 
             def delta(curr, prev):
@@ -143,7 +180,7 @@ def api_kpi():
             prev_engagement = float(prev_row['total_engagement'])  if pd.notna(prev_row['total_engagement'])  else 0
             prev_er         = (prev_engagement / prev_reach * 100) if prev_reach > 0 else 0
 
-            prev_amp_df = db.get_amplification(brand_id, partner_id, prev_start, prev_end)
+            prev_amp_df = db.get_amplification(brand_id, partner_ids, prev_start, prev_end)
             if not prev_amp_df.empty:
                 amp_row         = prev_amp_df.set_index("source")["reach"]
                 prev_br         = float(amp_row.get("brand", 0)) if pd.notna(amp_row.get("brand", 0)) else 0
@@ -151,7 +188,7 @@ def api_kpi():
             else:
                 prev_amp_factor = 0
 
-            prev_adp_df = db.get_adoption(brand_id, partner_id, prev_start, prev_end)
+            prev_adp_df = db.get_adoption(brand_id, partner_ids, prev_start, prev_end)
             if not prev_adp_df.empty:
                 adp_row  = prev_adp_df.iloc[0]
                 prev_act = int(adp_row["active_partners"]) if pd.notna(adp_row["active_partners"]) else 0
@@ -199,8 +236,8 @@ def api_kpi():
 @app.route('/api/partners')
 def api_partners():
     try:
-        brand_id, partner_id, days, start_date, end_date = get_params()
-        df = db.get_partner_stats(brand_id, partner_id, start_date, end_date)
+        brand_id, partner_ids, single_partner, days, start_date, end_date = get_params()
+        df = db.get_partner_stats(brand_id, partner_ids, start_date, end_date)
         if df.empty:
             return jsonify({"success": True, "data": []})
         result = kpi.calc_partner_health(df)
@@ -212,8 +249,8 @@ def api_partners():
 @app.route('/api/top-partners')
 def api_top_partners():
     try:
-        brand_id, partner_id, days, start_date, end_date = get_params()
-        df = db.get_partner_stats(brand_id, partner_id, start_date, end_date)
+        brand_id, partner_ids, single_partner, days, start_date, end_date = get_params()
+        df = db.get_partner_stats(brand_id, partner_ids, start_date, end_date)
         if df.empty:
             return jsonify({"success": True, "data": []})
         result = kpi.calc_partner_health(df)
@@ -233,8 +270,8 @@ def api_top_partners():
 @app.route('/api/chart/trend')
 def api_chart_trend():
     try:
-        brand_id, partner_id, days, start_date, end_date = get_params()
-        df    = db.get_weekly_trend(brand_id, partner_id, start_date, end_date)
+        brand_id, partner_ids, single_partner, days, start_date, end_date = get_params()
+        df    = db.get_weekly_trend(brand_id, partner_ids, start_date, end_date)
         if df.empty:
             return jsonify({"success": True, "data": {"chart": ""}})
             
@@ -260,8 +297,8 @@ def api_trend_chart():
         if metric not in ['reach', 'impressions', 'engagement']:
             metric = 'reach'
 
-        brand_id, partner_id, days, start_date, end_date = get_params()
-        where, params = db.brand_filter(alias="pub", brand_id=brand_id, partner_id=partner_id,
+        brand_id, partner_ids, single_partner, days, start_date, end_date = get_params()
+        where, params = db.brand_filter(alias="pub", brand_id=brand_id, partner_id=partner_ids,
                                         start_date=start_date, end_date=end_date)
         sql = f"""
             SELECT
@@ -288,17 +325,18 @@ def api_trend_chart():
 def api_generate():
     try:
         data       = request.get_json() or {}
-        brand_id   = data.get('brand_id')
-        partner_id = data.get('partner_id')
+        brand_id   = _clean(data.get('brand_id'))
+        partner_id = _clean(data.get('partner_id'))
+        tag_id     = _clean(data.get('tag_id'))
+        target_id  = _clean(data.get('target_id'))
         days       = data.get('days', 30)
         date_from  = data.get('date_from')
         date_to    = data.get('date_to')
 
-        if brand_id == 'all' or brand_id == '':
-            brand_id = None
-
-        if partner_id == 'all' or partner_id == '':
-            partner_id = None
+        selected = [k for k, v in (("partner_id", partner_id), ("tag_id", tag_id), ("target_id", target_id)) if v]
+        if len(selected) > 1:
+            return jsonify({"success": False,
+                            "error": f"Filtri mutuamente esclusivi: {', '.join(selected)}"}), 400
 
         # costruisce i parametri per report.py
         import subprocess, sys
@@ -307,8 +345,14 @@ def api_generate():
         if brand_id:
             cmd += ['--brand-id', brand_id]
 
+        # passthrough dell'id: la risoluzione tag/target -> lista partner avviene dentro
+        # report.py, cosi' non passiamo N uuid sulla command line
         if partner_id:
             cmd += ['--partner-id', partner_id]
+        elif tag_id:
+            cmd += ['--tag-id', tag_id]
+        elif target_id:
+            cmd += ['--target-id', target_id]
 
         if date_from and date_to:
             cmd += ['--date-from', date_from, '--date-to', date_to]
@@ -321,8 +365,16 @@ def api_generate():
         brand_name = db.get_brand_name(brand_id) if brand_id else None
         brand_slug = slugify(brand_name) or "tutti-brand"
 
-        partner_name = db.get_partner_name(partner_id) if partner_id else None
-        partner_slug = slugify(partner_name) or "tutti-partner"
+        # lo slug del filtro porta il prefisso tag-/target- per distinguere in Storico Report
+        # un report per tag da uno per partner omonimo
+        if partner_id:
+            partner_slug = slugify(db.get_partner_name(partner_id)) or "tutti-partner"
+        elif tag_id:
+            partner_slug = "tag-" + (slugify(db.get_tag_name(tag_id)) or tag_id)
+        elif target_id:
+            partner_slug = "target-" + (slugify(db.get_target_name(target_id)) or target_id)
+        else:
+            partner_slug = "tutti-partner"
 
         # millisecondi in coda al timestamp: due generazioni ravvicinate per lo stesso
         # brand+partner nello stesso secondo altrimenti si sovrascriverebbero silenziosamente
@@ -340,8 +392,8 @@ def api_generate():
 @app.route('/api/export-csv')
 def api_export_csv():
     try:
-        brand_id, partner_id, days, start_date, end_date = get_params()
-        where, params = db.brand_filter(alias="pub", brand_id=brand_id, partner_id=partner_id,
+        brand_id, partner_ids, single_partner, days, start_date, end_date = get_params()
+        where, params = db.brand_filter(alias="pub", brand_id=brand_id, partner_id=partner_ids,
                                         start_date=start_date, end_date=end_date)
         sql = f"""
             SELECT

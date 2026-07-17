@@ -40,9 +40,21 @@
                         </select>
                     </div>
                     <div class="control-group">
-                        <label for="partner-select" style="min-width: 50px;">Tag</label>
+                        <label for="partner-select" style="min-width: 50px;">Partner</label>
                         <select id="partner-select" class="form-select">
+                            <option value="all">Tutti i partner</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label for="tag-select" style="min-width: 50px;">Tag</label>
+                        <select id="tag-select" class="form-select">
                             <option value="all">Tutti i tag</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label for="target-select" style="min-width: 50px;">Target</label>
+                        <select id="target-select" class="form-select">
+                            <option value="all">Tutti i target</option>
                         </select>
                     </div>
                 </div>
@@ -86,6 +98,7 @@
                 <div style="display: flex; align-items: center; gap: 0.5rem;">
                     <h2 style="margin: 0;">KPI Live</h2>
                     <button id="btn-kpi-config" class="btn-icon" title="Configura KPI" style="font-size: 1.25rem;">⚙️</button>
+                    <span id="kpi-hidden-badge" style="display: none; font-size: 0.75rem; color: var(--text-muted, #868e96); background: rgba(255, 255, 255, 0.05); padding: 2px 8px; border-radius: 12px; border: 1px solid var(--border-color, #495057); white-space: nowrap;"></span>
                 </div>
                 <span class="kpi-date-range" id="kpi-date-range">Caricamento...</span>
             </div>
