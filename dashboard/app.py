@@ -546,4 +546,6 @@ def serve_output(filename):
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    # Solo per sviluppo locale. In produzione l'app è servita da Gunicorn
+    # (vedi dashboard/Procfile), che importa direttamente l'oggetto `app`.
+    app.run(host='0.0.0.0', port=5001, debug=False)
