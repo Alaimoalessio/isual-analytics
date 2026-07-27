@@ -17,7 +17,9 @@
   /* ── Page layout ─────────────────────────────────────────── */
   .page {
     width: 210mm;
-    min-height: 297mm;
+    /* niente min-height fissa: il blocco si adatta all'altezza reale del contenuto.
+       Con @page margin:0 un min-height di 297mm forzava una pagina 2 quasi vuota
+       ogni volta che il contenuto sforava anche di poco una singola A4. */
     background: #F1F3F5;
     padding: 0;
     margin: 0 auto;
@@ -245,6 +247,30 @@
     margin-top: 14px;
   }
   .disclaimer strong { color: {{ colors.accent_color }}; }
+
+  /* ── Controllo paginazione (WeasyPrint 69) ───────────────────
+     Ogni blocco visivo resta intero quando WeasyPrint spezza la pagina:
+     se non ci sta, viene spostato per intero alla pagina successiva.
+     break-inside e' applicato alla CARD SINGOLA, non al grid: cosi' una
+     card che non entra sposta solo se stessa, non tutta la griglia. */
+  .kpi-card,
+  .chart-card,
+  .table-card,
+  .disclaimer {
+    break-inside: avoid;
+    page-break-inside: avoid; /* alias legacy, per sicurezza */
+  }
+  /* la singola riga di tabella non si spezza mai a meta' tra due pagine:
+     protegge le tabelle lunghe (Leaderboard con molti partner) nei report 3+ pagine */
+  tbody tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  /* il titolo di sezione resta attaccato al blocco che segue (mai orfano a fondo pagina) */
+  .section-title {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
 </style>
 </head>
 <body>
