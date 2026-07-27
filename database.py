@@ -330,6 +330,25 @@ _DEFAULT_COLORS = {
     'logo_url': None,
 }
 
+# palette ufficiale ISUAL, applicata a TUTTI i brand quando i colori per-brand
+# sono disattivati via BRAND_COLORS_ENABLED=false. Coincide con i DEFAULT delle
+# colonne di brand_settings e con la palette "isual" di create_brand_settings.py.
+# NB: diversa da _DEFAULT_COLORS (fallback per un brand SENZA riga in tabella).
+# Solo i tre colori: il logo resta quello del DB, il flag riguarda i colori.
+_ISUAL_COLORS = {
+    'primary_color': '#3B5BDB',
+    'secondary_color': '#2F9E44',
+    'accent_color': '#F08C00',
+}
+
+
+def brand_colors_enabled():
+    # BRAND_COLORS_ENABLED=false forza la palette ISUAL ignorando brand_settings
+    # (filtro in lettura, reversibile: i dati nel DB non vengono toccati).
+    # Assente o qualsiasi valore != "false" (case-insensitive) = attivo, così il
+    # comportamento storico resta invariato senza dover impostare nulla.
+    return os.getenv('BRAND_COLORS_ENABLED', 'true').strip().lower() != 'false'
+
 
 def get_brand_settings(brand_id):
     # recupera i colori del brand; se non trovato restituisce i default ISUAL
@@ -339,14 +358,19 @@ def get_brand_settings(brand_id):
         [brand_id],
     )
     if df.empty:
-        return dict(_DEFAULT_COLORS)
-    row = df.iloc[0]
-    return {
-        'primary_color':   row['primary_color'],
-        'secondary_color': row['secondary_color'],
-        'accent_color':    row['accent_color'],
-        'logo_url':        row['logo_url'],
-    }
+        settings = dict(_DEFAULT_COLORS)
+    else:
+        row = df.iloc[0]
+        settings = {
+            'primary_color':   row['primary_color'],
+            'secondary_color': row['secondary_color'],
+            'accent_color':    row['accent_color'],
+            'logo_url':        row['logo_url'],
+        }
+    if not brand_colors_enabled():
+        # flag spento: forza la palette ISUAL, lascia intatto il logo
+        settings.update(_ISUAL_COLORS)
+    return settings
 
 
 # ordine di default delle KPI card, usato quando non c'è una config per-brand in DB
@@ -448,14 +472,19 @@ def get_all_brand_settings():
         ORDER BY b.name
     """
     df = run_query(sql)
+    force_isual = not brand_colors_enabled()
     result = []
     for _, row in df.iterrows():
-        result.append({
+        entry = {
             'brand_id':        row['id'],
             'brand_name':      row['name'],
             'primary_color':   row['primary_color']   if pd.notna(row['primary_color'])   else '#1C2B46',
             'secondary_color': row['secondary_color'] if pd.notna(row['secondary_color']) else '#F24C27',
             'accent_color':    row['accent_color']    if pd.notna(row['accent_color'])    else '#F24C27',
             'logo_url':        row['logo_url']        if pd.notna(row['logo_url'])        else None,
-        })
+        }
+        if force_isual:
+            # flag spento: forza la palette ISUAL, lascia intatto il logo
+            entry.update(_ISUAL_COLORS)
+        result.append(entry)
     return result

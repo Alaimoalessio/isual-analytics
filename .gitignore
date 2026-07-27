@@ -36,3 +36,5 @@ static/logos/
 .idea/
 *.swp
 *.swo
+.env.production
+.env.prod-admin
