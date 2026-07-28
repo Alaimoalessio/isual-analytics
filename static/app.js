@@ -53,6 +53,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const partnersGrid = document.getElementById('partners-grid');
     const topContentBody = document.getElementById('top-content-body');
 
+    // Nomi di brand/partner/tag/target e testi dei post arrivano da fonti esterne
+    // (app di terzi, social): vanno escapati prima di finire in innerHTML, altrimenti
+    // un valore con markup lo inietta nella pagina.
+    // Dichiarata QUI, sopra initDashboard(): loadBrands() la usa, e con la const piu' in
+    // basso funzionava solo perche' quella si sospende sul fetch il tempo che la
+    // dichiarazione venga eseguita. Dipendere da quel timing e' fragile.
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g,
+        ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+
     // Theme Initialization
     const savedTheme = localStorage.getItem('isual_theme') || 'light';
     if (savedTheme === 'dark') {
@@ -202,12 +211,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Functions ---
 
-    // Nomi partner e testi dei post arrivano da fonti esterne (app di terzi, social):
-    // vanno escapati prima di finire in innerHTML, altrimenti un valore con markup
-    // lo inietta nella pagina.
-    const esc = (s) => String(s ?? '').replace(/[&<>"']/g,
-        ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
-
     async function initDashboard() {
         checkDBHealth();
         await loadBrands();
@@ -263,7 +266,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (result.success && result.data) {
                 const savedBrand = localStorage.getItem('isual_brand') || 'all';
-                const options = result.data.map(b => `<option value="${b.id}" ${b.id == savedBrand ? 'selected' : ''}>${b.name}</option>`).join('');
+                const options = result.data.map(b => `<option value="${esc(b.id)}" ${b.id == savedBrand ? 'selected' : ''}>${esc(b.name)}</option>`).join('');
                 brandSelect.innerHTML = `<option value="all" ${savedBrand === 'all' ? 'selected' : ''}>Tutti i brand</option>${options}`;
             }
         } catch (error) {
@@ -290,7 +293,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!hasSaved) localStorage.setItem(key, 'all');
 
                 const options = result.data.map(o =>
-                    `<option value="${o.id}" ${o.id == finalValue ? 'selected' : ''}>${o.name}</option>`).join('');
+                    `<option value="${esc(o.id)}" ${o.id == finalValue ? 'selected' : ''}>${esc(o.name)}</option>`).join('');
                 select.innerHTML = `<option value="all" ${finalValue === 'all' ? 'selected' : ''}>${allLabel}</option>${options}`;
             }
         } catch (error) {
