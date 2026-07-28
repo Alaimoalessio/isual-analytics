@@ -223,17 +223,25 @@ def get_brand_name(brand_id):
 
 def get_overview(brand_id, partner_id, start_date, end_date):
     where, params = brand_filter(brand_id=brand_id, partner_id=partner_id, start_date=start_date, end_date=end_date)
+    # NESSUN join qui. C'era un "LEFT JOIN partners p ON p.brand_id = pub.brand_id" che non
+    # legava la pubblicazione al suo partner: ogni riga di publications veniva moltiplicata
+    # per il numero di righe partner del brand, e le SUM uscivano gonfiate di quel fattore
+    # (Terme di Cervia x9, Claudio Uno x31). Reach, Impressions ed Engagement — le tre cifre
+    # di testa di dashboard e PDF — erano sbagliate; total_posts si salvava per il DISTINCT.
+    # Il join serviva solo a COUNT(DISTINCT p.id) AS total_partners, colonna che nessuno
+    # leggeva: Network Adoption prende attivi e totali da get_adoption. Quel conteggio morto
+    # era anche in contraddizione con get_adoption, perche' contava i partner grezzi invece
+    # dei soli canonici (9 righe per 6 nomi reali) — lo stesso bug gia' risolto la' sotto.
+    # Rimosse quindi sia la join sia le due colonne partner, invece di correggere la ON:
+    # una colonna morta che si chiama total_partners e contraddice la logica buona e' una
+    # trappola per il prossimo che la trova e la usa in buona fede.
     sql = f"""
         SELECT
             SUM(pub.ana_reach)                                      AS total_reach,
             SUM(pub.ana_impressions)                                AS total_impressions,
             SUM(pub.ana_engagement)                                 AS total_engagement,
-            COUNT(DISTINCT pub.id)                                  AS total_posts,
-            COUNT(DISTINCT pub.partner_id)
-                FILTER (WHERE pub.partner_id IS NOT NULL)           AS active_partners,
-            COUNT(DISTINCT p.id)                                    AS total_partners
+            COUNT(DISTINCT pub.id)                                  AS total_posts
         FROM publications pub
-        LEFT JOIN partners p ON p.brand_id = pub.brand_id
         {where}
     """
     return run_query(sql, params)
