@@ -51,6 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentMetric = 'reach';
     let trendChart = null;
     const partnersGrid = document.getElementById('partners-grid');
+    const topContentBody = document.getElementById('top-content-body');
 
     // Theme Initialization
     const savedTheme = localStorage.getItem('isual_theme') || 'light';
@@ -105,6 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
         loadKPIs();
         loadPartners();
         loadTrendChart();
+        loadTopContent();
     });
 
     exportCsvBtn.addEventListener('click', exportCSV);
@@ -199,6 +201,12 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(checkDBHealth, 30000);
 
     // --- Functions ---
+
+    // Nomi partner e testi dei post arrivano da fonti esterne (app di terzi, social):
+    // vanno escapati prima di finire in innerHTML, altrimenti un valore con markup
+    // lo inietta nella pagina.
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g,
+        ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 
     async function initDashboard() {
         checkDBHealth();
@@ -331,7 +339,8 @@ document.addEventListener('DOMContentLoaded', () => {
             await Promise.all([
                 loadKPIs(),
                 loadTrendChart(),
-                loadPartners()
+                loadPartners(),
+                loadTopContent()
             ]);
             updateTimestamp();
         } finally {
@@ -598,7 +607,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     return `
                         <div class="partner-card">
                             <div class="partner-header">
-                                <div class="partner-name">${p.partner_name}</div>
+                                <div class="partner-name">${esc(p.partner_name)}</div>
                                 <div class="partner-badge ${healthClass}">${p.classification}</div>
                             </div>
                             <div class="partner-stats">
@@ -628,6 +637,50 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (error) {
             partnersGrid.innerHTML = '<div class="loading-text alert">Errore connessione server</div>';
+        }
+    }
+
+    async function loadTopContent() {
+        const placeholder = (msg, cls = 'loading-text') =>
+            `<tr><td colspan="8" class="text-center ${cls}">${msg}</td></tr>`;
+
+        topContentBody.innerHTML = placeholder('Caricamento contenuti...');
+        try {
+            const response = await fetch(`/api/top-content${getQueryParams()}`);
+            const result = await response.json();
+
+            if (result.success) {
+                if (result.data.length === 0) {
+                    topContentBody.innerHTML = placeholder('Nessun contenuto per il periodo selezionato');
+                    return;
+                }
+
+                topContentBody.innerHTML = result.data.map(c => {
+                    // stesse soglie del PDF (templates/report.html): parita' visiva tra
+                    // dashboard e report per lo stesso brand/filtro/periodo
+                    let erColor;
+                    if (c.er_post >= 3.0)      erColor = 'var(--green-positive)';
+                    else if (c.er_post >= 1.5) erColor = 'var(--orange-warning)';
+                    else                       erColor = 'var(--red-alert)';
+
+                    return `
+                        <tr>
+                            <td>${c.rank}</td>
+                            <td style="font-weight: 600;">${esc(c.title_short)}</td>
+                            <td>${esc(c.channel_upper)}</td>
+                            <td style="text-align: right;">${c.reach_fmt}</td>
+                            <td style="text-align: right;">${c.impr_fmt}</td>
+                            <td style="text-align: right; color: ${erColor}; font-weight: 600;">${c.er_fmt}</td>
+                            <td style="text-align: right; font-weight: 600;">${c.score_fmt}</td>
+                            <td style="text-align: right;">${c.n_partners}</td>
+                        </tr>
+                    `;
+                }).join('');
+            } else {
+                topContentBody.innerHTML = placeholder('Errore caricamento contenuti', 'alert');
+            }
+        } catch (error) {
+            topContentBody.innerHTML = placeholder('Errore connessione server', 'alert');
         }
     }
 

@@ -267,6 +267,40 @@ def api_top_partners():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@app.route('/api/top-content')
+def api_top_content():
+    try:
+        brand_id, partner_ids, single_partner, days, start_date, end_date = get_params()
+        df = db.get_content_performance(brand_id, partner_ids, start_date, end_date)
+        if df.empty:
+            return jsonify({"success": True, "data": []})
+
+        # stessa funzione usata dal PDF (report.py): il troncamento a 5 righe e' dentro
+        # kpi.calc_content_score, cosi' dashboard e report mostrano le stesse identiche righe
+        result = kpi.calc_content_score(df)
+
+        # colonne selezionate a mano, non to_dict() sul df intero: published_at e' un
+        # Timestamp non serializzabile, e reach_norm/title/post_id non servono al client
+        rows = [
+            {
+                "rank":          i + 1,
+                "title_short":   r["title_short"],
+                "channel":       r["channel"],
+                "channel_upper": r["channel_upper"],
+                "reach_fmt":     r["reach_fmt"],
+                "impr_fmt":      r["impr_fmt"],
+                "er_fmt":        r["er_fmt"],
+                "er_post":       float(r["er_post"]),   # grezzo: serve al JS per la soglia colore
+                "score_fmt":     r["score_fmt"],
+                "n_partners":    int(r["n_partners"]),  # COUNT SQL -> int64, non serializzabile
+            }
+            for i, r in result.iterrows()
+        ]
+        return jsonify({"success": True, "data": rows})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route('/api/chart/trend')
 def api_chart_trend():
     try:
