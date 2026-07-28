@@ -83,7 +83,8 @@ def brand_filter(alias="pub", brand_id=None, partner_id=None, start_date=None, e
 # rimaneggiarlo.
 PARTNERS_CANONICI = """
 WITH canonici AS (
-  SELECT DISTINCT ON (pa.brand_id, pa.name) pa.id AS canonical_id
+  SELECT DISTINCT ON (pa.brand_id, pa.name)
+         pa.brand_id, pa.name, pa.id AS canonical_id
   FROM partners pa
   LEFT JOIN publications pu ON pu.partner_id = pa.id
   GROUP BY pa.id, pa.brand_id, pa.name, pa.version, pa.created_at
@@ -148,10 +149,20 @@ def get_targets_for_brand(brand_id=None):
 def get_partner_ids_by_tag(tag_id):
     # lista vuota = tag senza partner associati: chi chiama deve trattarla come
     # filtro attivo a zero risultati, non come assenza di filtro
-    sql = """
-        SELECT DISTINCT pt.partner_id
+    #
+    # I collegamenti puntano all'id che l'app di terzi aveva sottomano al momento del
+    # tag, che puo' essere una copia vuota: il tag 'ggg' era legato al duplicato senza
+    # pubblicazioni e non al partner reale, quindi il filtro mostrava zero. Qui i
+    # collegamenti vengono RIMAPPATI sul canonico del gruppo, non filtrati: filtrare
+    # lascerebbe il tag senza alcun partner (peggio di adesso), rimappare lo porta sul
+    # record giusto. Il DISTINCT e' necessario, non decorativo: un tag legato sia alla
+    # riga canonica sia a una copia (caso 'Prosciutto') le collassa sullo stesso id.
+    sql = PARTNERS_CANONICI + """
+        SELECT DISTINCT c.canonical_id AS partner_id
         FROM partners_tags pt
-        JOIN tags t ON t.id = pt.tag_id
+        JOIN tags t     ON t.id = pt.tag_id
+        JOIN partners p ON p.id = pt.partner_id
+        JOIN canonici c ON c.brand_id = p.brand_id AND c.name = p.name
         WHERE pt.tag_id = %s
           AND t.deleted = false
     """
