@@ -171,10 +171,17 @@ def get_partner_ids_by_tag(tag_id):
 
 
 def get_partner_ids_by_target(target_id):
-    sql = """
-        SELECT DISTINCT pt.partner_id
+    # stessa rimappatura sui canonici di get_partner_ids_by_tag, per simmetria.
+    # Oggi e' un no-op verificato (nessun target e' collegato a un partner non
+    # canonico), ma senza di essa Tag e Target si comporterebbero in modo diverso
+    # davanti allo stesso dato: un target assegnato a una copia vuota mostrerebbe
+    # zero mentre il tag equivalente funziona.
+    sql = PARTNERS_CANONICI + """
+        SELECT DISTINCT c.canonical_id AS partner_id
         FROM partners_targets pt
-        JOIN targets t ON t.id = pt.target_id
+        JOIN targets t  ON t.id = pt.target_id
+        JOIN partners p ON p.id = pt.partner_id
+        JOIN canonici c ON c.brand_id = p.brand_id AND c.name = p.name
         WHERE pt.target_id = %s
           AND t.deleted = false
     """
