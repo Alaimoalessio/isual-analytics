@@ -63,6 +63,44 @@ def brand_filter(alias="pub", brand_id=None, partner_id=None, start_date=None, e
     return where, params
 
 
+# ── Partner canonici ────────────────────────────────────────────────────────
+# L'app di terzi permette di ricreare un partner con lo stesso nome nello stesso
+# brand (partners ha solo PRIMARY KEY (id), nessun vincolo su (brand_id, name)),
+# e in produzione le righe non vengono mai cancellate. Risultato: nomi duplicati,
+# quasi sempre con una riga popolata e le altre vuote.
+#
+# Criterio del canonico, per gruppo (brand_id, name):
+#   1. piu' pubblicazioni  — "il piu' popolato", il record realmente in uso;
+#   2. version piu' alta   — spareggio quando nessuna riga ha pubblicazioni;
+#   3. created_at piu' vecchio — a parita', l'originale e non la ricreazione;
+#   4. id                  — determinismo assoluto, mai un risultato ambiguo.
+# Si contano TUTTE le pubblicazioni, non solo status='OK': una riga con sole
+# pubblicazioni non-OK e' comunque il record reale rispetto a un duplicato vuoto.
+#
+# La CTE e' deliberatamente SENZA PARAMETRI (calcola i canonici di tutti i brand,
+# il filtro per brand resta separato): get_adoption costruisce i suoi parametri
+# con un ordine posizionale fragile, e un frammento parametrico costringerebbe a
+# rimaneggiarlo.
+PARTNERS_CANONICI = """
+WITH canonici AS (
+  SELECT DISTINCT ON (pa.brand_id, pa.name) pa.id AS canonical_id
+  FROM partners pa
+  LEFT JOIN publications pu ON pu.partner_id = pa.id
+  GROUP BY pa.id, pa.brand_id, pa.name, pa.version, pa.created_at
+  ORDER BY pa.brand_id, pa.name,
+           COUNT(pu.id)  DESC,
+           pa.version    DESC,
+           pa.created_at ASC,
+           pa.id
+)
+"""
+
+# Condizione di appartenenza ai canonici, nello stesso formato {alias} usato dalle
+# altre condizioni di scope: va aggiunta alla LISTA condivisa, mai applicata a mano
+# a un solo lato di una query (vedi l'invariante di get_adoption).
+CONDIZIONE_CANONICO = "{alias}id IN (SELECT canonical_id FROM canonici)"
+
+
 def run_query(sql, params=None):
     with get_engine().connect() as conn:
         return pd.read_sql(sql, conn, params=tuple(params) if params else None)
@@ -73,10 +111,14 @@ def get_brands():
 
 
 def get_partners_for_filter(brand_id=None):
-    sql = "SELECT id, name FROM partners"
+    # solo i partner canonici: le copie vuote sono indistinguibili nella tendina
+    # (l'utente vede solo il nome) e selezionarle dava KPI a zero senza spiegazione.
+    # Le righe restano nel DB, vengono solo escluse dalla selezione.
+    sql = PARTNERS_CANONICI + " SELECT id, name FROM partners WHERE " + \
+          CONDIZIONE_CANONICO.format(alias="")
     params = []
     if brand_id:
-        sql += " WHERE brand_id = %s"
+        sql += " AND brand_id = %s"
         params.append(brand_id)
     sql += " ORDER BY name"
     return run_query(sql, params)
@@ -206,7 +248,12 @@ def get_adoption(brand_id, partner_id, start_date, end_date):
     #    (orfani), contati fra gli attivi ma assenti dal denominatore -> 3/1 = 300%.
     # Da qui l'unica condizione di appartenenza, costruita una volta e applicata a
     # entrambi i lati: l'invariante attivi <= totali vale per costruzione.
-    scope_conditions = []
+    # I duplicati vuoti gonfiavano il denominatore: Terme di Cervia dava 5/9 = 56%
+    # con 9 righe partners per 6 nomi reali. Contano solo i canonici — e la condizione
+    # va QUI, nella lista condivisa, cosi' numeratore e denominatore la ereditano
+    # entrambi. Applicarla a un solo lato ricreerebbe la divergenza descritta sopra.
+    # Nessun parametro: si formatta da se' su entrambi i lati (vedi CONDIZIONE_CANONICO).
+    scope_conditions = [CONDIZIONE_CANONICO]
     scope_params = []
     if brand_id:
         scope_conditions.append("{alias}brand_id = %s")
@@ -227,7 +274,9 @@ def get_adoption(brand_id, partner_id, start_date, end_date):
     # Senza questo, un partner_id orfano gonfia gli attivi.
     exists_where = " AND ".join(["p.id = pub.partner_id"] + [c.format(alias="p.") for c in scope_conditions])
 
-    sql = f"""
+    # la CTE dei canonici prefissa l'intera query: e' cosi' visibile sia all'EXISTS
+    # del numeratore sia alla subquery del denominatore.
+    sql = PARTNERS_CANONICI + f"""
         SELECT
             COUNT(DISTINCT pub.partner_id) FILTER (
                 WHERE pub.partner_id IS NOT NULL
