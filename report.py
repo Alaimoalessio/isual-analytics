@@ -101,6 +101,12 @@ def generate_report(brand_id=None, partner_id=None, tag_id=None, target_id=None,
     # partner la metrica non ha senso e viene mostrata N/A tramite partner_filtered qui sotto.
     df_adoption = db.get_adoption(brand_id, partner_ids, start_date, end_date)
 
+    # nome del brand per l'header: identifica il report a colpo d'occhio ora che i colori
+    # e i loghi per-brand sono disattivati. Senza brand_id il report copre tutta la rete.
+    brand_name = (db.get_brand_name(brand_id) or "").strip() if brand_id else ""
+    if not brand_name:
+        brand_name = "Tutti i brand"
+
     # recupera colori del brand dal DB
     if brand_id:
         brand_colors = db.get_brand_settings(brand_id)
@@ -177,6 +183,7 @@ def generate_report(brand_id=None, partner_id=None, tag_id=None, target_id=None,
         partner_rows=df_partners_ok.to_dict("records"),
         channel_rows=df_channels_ok.to_dict("records"),
         colors=brand_colors,
+        brand_name=brand_name,
         filter_label=filter_label,
         single_partner=single_partner,
         filter_kind=filter_kind,

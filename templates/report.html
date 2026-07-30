@@ -34,6 +34,23 @@
     justify-content: space-between;
     align-items: flex-end;
   }
+  /* Il brand occupa la posizione di sinistra, prima del wordmark: e' l'unica cosa che
+     identifica il report ora che colori e loghi per-brand sono disattivati.
+     min-width:0 e overflow-wrap servono per i nomi lunghi (il piu' lungo in DB e'
+     "SGR Efficienza Energetica"): il blocco manda a capo invece di spingere
+     .header-meta fuori dalla pagina. */
+  .header-brand-block {
+    min-width: 0;
+    padding-right: 24px;
+  }
+  .header-brand {
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    line-height: 1.15;
+    color: white;
+    overflow-wrap: break-word;
+  }
   .header-logo {
     font-size: 28px;
     font-weight: 800;
@@ -48,15 +65,19 @@
     color: rgba(255,255,255,0.75);
     margin-top: 2px;
   }
+  /* flex-shrink:0 + nowrap: wordmark, sottotitolo e date non si spezzano mai,
+     e' il blocco brand a sinistra che cede spazio */
   .header-meta {
     text-align: right;
     font-size: 10px;
     color: rgba(255,255,255,0.80);
+    flex-shrink: 0;
+    white-space: nowrap;
   }
-  .header-meta strong {
-    font-size: 13px;
+  .header-dates {
+    font-size: 11px;
     color: white;
-    display: block;
+    margin-top: 6px;
   }
 
   /* ── Content wrapper ─────────────────────────────────────── */
@@ -278,19 +299,19 @@
 
   <!-- ── HEADER ─────────────────────────────────────────────────── -->
   <div class="header">
-    <div>
+    <div class="header-brand-block">
       {% if colors.logo_url %}
       <img src="file://{{ colors.logo_url }}"
            alt="logo"
            style="height: 48px; width: auto; object-fit: contain; margin-bottom: 6px; display: block;">
       {% endif %}
-      <div class="header-logo">isual<span>.</span></div>
-      <div class="header-subtitle">Analytics · Performance Report</div>
+      <div class="header-brand">{{ brand_name }}</div>
+      <div class="header-subtitle">{{ filter_label }}</div>
     </div>
     <div class="header-meta">
-      <strong>{{ kpi.period_label }}</strong>
-      {{ kpi.date_range }}<br>
-      {{ filter_label }}
+      <div class="header-logo">isual<span>.</span></div>
+      <div class="header-subtitle">Analytics · Performance Report</div>
+      <div class="header-dates">{{ kpi.date_range }}</div>
     </div>
   </div>
 
