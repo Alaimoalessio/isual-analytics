@@ -198,6 +198,24 @@
   }
   tbody td.right { text-align: right; color: #6C757D; }
   tbody td.metric { text-align: right; font-weight: 600; }
+  /* Colonna Partner: nomi impilati, uno per <div>. max-width + word-break perche' un
+     nome lungo (il piu' lungo in DB e' "Benedetta Universita' pr", 23 caratteri) deve
+     andare a capo invece di allargare la colonna e schiacciare le altre.
+     line-height ridotto: con 4 nomi impilati la riga cresce, e 1.25 la tiene compatta.
+     vertical-align top: con piu' nomi la cella e' piu' alta delle vicine, e centrarla
+     disallineerebbe il primo nome rispetto ai numeri della stessa riga.
+     overflow-wrap: break-word e' la proprieta' STANDARD e spezza le parole troppo lunghe
+     solo quando servirebbe, lasciando intatte le interruzioni normali sugli spazi.
+     Con "word-break: break-word" (alias non standard) un nome di 34 caratteri in parola
+     unica non veniva spezzato e sbordava oltre il bordo della card. */
+  tbody td.partner-names {
+    max-width: 105px;
+    color: #6C757D;
+    font-size: 9px;
+    line-height: 1.25;
+    overflow-wrap: break-word;
+    vertical-align: top;
+  }
   .rank-badge {
     display: inline-block;
     width: 20px; height: 20px;
@@ -367,7 +385,8 @@
             <th class="right">Impressions</th>
             <th class="right">ER %</th>
             <th class="right">Score</th>
-            <th class="right">Partner</th>
+            {# non piu' allineata a destra: la colonna ora contiene nomi, non un numero #}
+            <th>Partner</th>
           </tr>
         </thead>
         <tbody>
@@ -387,7 +406,14 @@
               {{ row.er_fmt }}
             </td>
             <td class="metric" style="color:{{ colors.primary_color }};">{{ row.score_fmt }}</td>
-            <td class="right">{{ row.n_partners }}</td>
+            {# un nome per riga: impilati, la larghezza la detta il nome piu' lungo e non
+               la somma dei nomi. Il caso a un solo partner ricade qui senza formato speciale.
+               partner_names e' None per i contenuti pubblicati solo dal brand. #}
+            <td class="partner-names">
+              {%- if row.partner_names -%}
+                {%- for nome in row.partner_names %}<div>{{ nome }}</div>{% endfor -%}
+              {%- else -%}—{%- endif -%}
+            </td>
           </tr>
           {% else %}
           <tr><td colspan="8" style="text-align:center;color:#6C757D;padding:20px;">

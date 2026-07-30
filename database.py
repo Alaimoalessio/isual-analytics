@@ -349,9 +349,24 @@ def get_content_performance(brand_id, partner_id, start_date, end_date):
             SUM(pub.ana_engagement)      AS engagement,
             COUNT(DISTINCT pub.partner_id)
                 FILTER (WHERE pub.partner_id IS NOT NULL) AS n_partners,
+            -- Nomi dei partner che hanno pubblicato il contenuto, per la colonna Partner.
+            -- DISTINCT sul NOME e non filtro sui canonici: i duplicati condividono
+            -- (brand_id, name), quindi il nome e' comunque quello giusto e filtrare sui
+            -- canonici farebbe SPARIRE un nome reale se una pubblicazione puntasse a un
+            -- duplicato. Il rischio vero e' lo stesso nome ripetuto, e lo chiude DISTINCT.
+            -- TRIM: 21 righe partners hanno spazi in testa/coda; verificato che nessun
+            -- nome differisce da un altro solo per spazi, quindi non fonde partner distinti.
+            -- ORDER BY: senza, l'ordine dei nomi cambia fra due generazioni dello stesso report.
+            -- FILTER: le pubblicazioni brand (partner_id IS NULL) restano nel calcolo dello
+            -- score ma non aggiungono un nome vuoto alla lista.
+            ARRAY_AGG(DISTINCT TRIM(p.name) ORDER BY TRIM(p.name))
+                FILTER (WHERE p.name IS NOT NULL)         AS partner_names,
             MAX(pub.published_at)        AS published_at
         FROM publications pub
         JOIN posts po ON po.id = pub.post_id
+        -- join su chiave primaria: 1:1, non moltiplica le righe e non gonfia le SUM
+        -- (LEFT per non perdere le pubblicazioni brand, che hanno partner_id NULL)
+        LEFT JOIN partners p ON p.id = pub.partner_id
         {where}
         GROUP BY pub.post_id, po.text, pub.social
         ORDER BY reach DESC
