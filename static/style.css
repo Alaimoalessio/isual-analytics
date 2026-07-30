@@ -520,6 +520,25 @@ body {
     border-bottom: none;
 }
 
+/* Colonna Partner di Top Content: un nome per <div>, impilati.
+   Con il padding pieno la colonna resta stretta e i nomi si spezzano a meta'
+   ("Hotel / Losanna"), rendendo ambiguo dove finisce un partner e inizia il
+   successivo. Padding ridotto e font piu' piccolo per far stare i nomi su una
+   riga; il margine fra <div> separa i partner anche quando uno va a capo,
+   cosi' le righe di uno stesso nome restano visivamente unite. */
+.reports-table td.partner-names {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+    font-size: 0.8125rem;
+    line-height: 1.25;
+    color: var(--text-secondary);
+    overflow-wrap: break-word;
+}
+
+.reports-table td.partner-names div + div {
+    margin-top: 0.35rem;
+}
+
 /* Utilities */
 .loading {
     animation: pulse 1.5s infinite;

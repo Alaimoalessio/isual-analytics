@@ -675,7 +675,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             <td style="text-align: right;">${c.impr_fmt}</td>
                             <td style="text-align: right; color: ${erColor}; font-weight: 600;">${c.er_fmt}</td>
                             <td style="text-align: right; font-weight: 600;">${c.score_fmt}</td>
-                            <td style="text-align: right;">${c.n_partners}</td>
+                            <td class="partner-names">${(c.partner_names && c.partner_names.length)
+                                ? c.partner_names.map(n => `<div>${esc(n)}</div>`).join('')
+                                : '—'}</td>
                         </tr>
                     `;
                 }).join('');

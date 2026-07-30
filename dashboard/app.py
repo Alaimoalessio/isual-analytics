@@ -292,7 +292,10 @@ def api_top_content():
                 "er_fmt":        r["er_fmt"],
                 "er_post":       float(r["er_post"]),   # grezzo: serve al JS per la soglia colore
                 "score_fmt":     r["score_fmt"],
-                "n_partners":    int(r["n_partners"]),  # COUNT SQL -> int64, non serializzabile
+                # lista di nomi, non il conteggio: stessa colonna e stessi nomi del PDF.
+                # ARRAY_AGG torna None quando il contenuto e' stato pubblicato solo dal
+                # brand (partner_id NULL) -> lista vuota, che il JS rende come "—".
+                "partner_names": list(r["partner_names"]) if r["partner_names"] is not None else [],
             }
             for i, r in result.iterrows()
         ]
