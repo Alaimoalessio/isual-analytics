@@ -268,7 +268,14 @@ def make_trend_chart(df, brand_colors=None):
     ax.spines[["left", "bottom"]].set_color("#DEE2E6")
     ax.tick_params(colors="#6C757D", labelsize=8)
     ax.yaxis.set_major_formatter(y_formatter)
-    ax.legend(fontsize=9, framealpha=0, loc="upper left")
+    # legenda FUORI dall'area del grafico: dentro (loc="upper left") copriva punti e linee.
+    # bbox_to_anchor y negativo la porta sotto l'asse; -0.22 e non il -0.15 tipico perche'
+    # le etichette X sono su due righe ("W19\n05/05") e occupano piu' spazio verticale.
+    # ncol=2 tiene le due voci affiancate invece di impilate.
+    # Il ritaglio non e' un rischio: fig_to_base64 salva con bbox_inches="tight", che
+    # espande l'area salvata fino a comprendere la legenda esterna.
+    ax.legend(fontsize=9, framealpha=0, loc="upper center",
+              bbox_to_anchor=(0.5, -0.22), ncol=2)
     ax.grid(axis="y", color="#DEE2E6", linewidth=0.5)
 
     plt.tight_layout()
