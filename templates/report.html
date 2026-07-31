@@ -372,7 +372,80 @@
     </div>
     {% endif %}
 
-    <!-- ── SECTION 3: CONTENT PERFORMANCE ─────────────────────── -->
+    <!-- ── SECTION 3: PARTNER LEADERBOARD ──────────────────────── -->
+    {# con un solo partner la classifica e' una riga sola: il nome e' gia' nell'header #}
+    {% if not single_partner %}
+    <div class="section-title">Partner Leaderboard</div>
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr>
+            <th>Rank</th>
+            <th>Partner</th>
+            <th class="right">Reach</th>
+            <th class="right">Post</th>
+            <th class="right">ER %</th>
+            <th class="right">Health</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in partner_rows %}
+          <tr>
+            <td><span class="rank-badge"
+              {% if loop.index == 1 %}style="background:{{ colors.accent_color }}"{% endif %}>
+              {{ loop.index }}
+            </span></td>
+            <td style="font-weight:600;">{{ row.partner_name }}</td>
+            <td class="metric">{{ row.reach_fmt }}</td>
+            <td class="right">{{ row.posts_int }}</td>
+            <td class="metric" style="color:
+              {% if row.er >= 3.0 %}#2F9E44{% elif row.er >= 1.5 %}#F08C00{% else %}#E03131{% endif %}">
+              {{ row.er_fmt }}
+            </td>
+            <td class="metric" style="color:
+              {% if row.health_score >= 85 %}#2F9E44
+              {% elif row.health_score >= 70 %}#F08C00
+              {% else %}#E03131{% endif %}">
+              {{ row.health_score }}/100
+            </td>
+            <td>
+              {% if row.health_label == 'VIP' %}
+                <span class="badge badge-green">VIP ✓</span>
+              {% elif row.health_label == 'Active' %}
+                <span class="badge badge-blue">Active</span>
+              {% else %}
+                <span class="badge badge-red">⚠ ALERT</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          {# tabella vuota per due motivi diversi: gruppo senza partner, oppure partner
+             inattivi nel periodo. total_partners e' il denominatore di Network Adoption
+             (la "Y" di "X/Y partner attivi"), ed e' una stringa: confronto con '0'. #}
+          <tr><td colspan="7" style="text-align:center;color:#6C757D;padding:20px;">
+            {% if filter_kind in ('tag', 'target') %}
+              {% if kpi.total_partners == '0' %}
+                Nessun partner associato a questo {{ filter_kind }}.
+              {% else %}
+                {{ kpi.total_partners }} partner
+                {{ 'associato' if kpi.total_partners == '1' else 'associati' }}
+                a questo {{ filter_kind }}, nessuna pubblicazione nel periodo selezionato.
+              {% endif %}
+            {% else %}
+              Nessun dato partner disponibile.
+            {% endif %}
+          </td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div style="font-size:9px;color:#6C757D;margin-top:8px;">
+        Health Score = 40% Activation + 35% Regularity + 25% Performance · ALERT se &lt;70 · VIP se ≥85
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- ── SECTION 4: CONTENT PERFORMANCE ─────────────────────── -->
     <div class="section-title">Top Content — Content Score</div>
     <div class="table-card">
       <table>
@@ -426,91 +499,6 @@
         Content Score = (ER × 0.6) + (Reach normalizzata × 0.4)
       </div>
     </div>
-
-    <!-- ── SECTION 4: PARTNER LEADERBOARD ──────────────────────── -->
-    {# con un solo partner la classifica e' una riga sola: il nome e' gia' nell'header #}
-    {% if not single_partner %}
-    <div class="section-title">Partner Leaderboard</div>
-    <div class="table-card">
-      <table>
-        <thead>
-          <tr>
-            <th>Rank</th>
-            <th>Partner</th>
-            <th class="right">Reach</th>
-            <th class="right">Post</th>
-            <th class="right">ER %</th>
-            <th class="right">Health</th>
-            <th>Status</th>
-            <th>Tipo</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in partner_rows %}
-          <tr>
-            <td><span class="rank-badge"
-              {% if loop.index == 1 %}style="background:{{ colors.accent_color }}"{% endif %}>
-              {{ loop.index }}
-            </span></td>
-            <td style="font-weight:600;">{{ row.partner_name }}</td>
-            <td class="metric">{{ row.reach_fmt }}</td>
-            <td class="right">{{ row.posts_int }}</td>
-            <td class="metric" style="color:
-              {% if row.er >= 3.0 %}#2F9E44{% elif row.er >= 1.5 %}#F08C00{% else %}#E03131{% endif %}">
-              {{ row.er_fmt }}
-            </td>
-            <td class="metric" style="color:
-              {% if row.health_score >= 85 %}#2F9E44
-              {% elif row.health_score >= 70 %}#F08C00
-              {% else %}#E03131{% endif %}">
-              {{ row.health_score }}/100
-            </td>
-            <td>
-              {% if row.health_label == 'VIP' %}
-                <span class="badge badge-green">VIP ✓</span>
-              {% elif row.health_label == 'Active' %}
-                <span class="badge badge-blue">Active</span>
-              {% else %}
-                <span class="badge badge-red">⚠ ALERT</span>
-              {% endif %}
-            </td>
-            <td>
-              {% if row.classification == 'Top Performer' %}
-                <span class="badge badge-green">Top Performer</span>
-              {% elif row.classification == 'Amplifier' %}
-                <span class="badge badge-blue">Amplifier</span>
-              {% elif row.classification == 'Quality Niche' %}
-                <span class="badge badge-orange">Quality Niche</span>
-              {% else %}
-                <span class="badge badge-gray">Weak</span>
-              {% endif %}
-            </td>
-          </tr>
-          {% else %}
-          {# tabella vuota per due motivi diversi: gruppo senza partner, oppure partner
-             inattivi nel periodo. total_partners e' il denominatore di Network Adoption
-             (la "Y" di "X/Y partner attivi"), ed e' una stringa: confronto con '0'. #}
-          <tr><td colspan="8" style="text-align:center;color:#6C757D;padding:20px;">
-            {% if filter_kind in ('tag', 'target') %}
-              {% if kpi.total_partners == '0' %}
-                Nessun partner associato a questo {{ filter_kind }}.
-              {% else %}
-                {{ kpi.total_partners }} partner
-                {{ 'associato' if kpi.total_partners == '1' else 'associati' }}
-                a questo {{ filter_kind }}, nessuna pubblicazione nel periodo selezionato.
-              {% endif %}
-            {% else %}
-              Nessun dato partner disponibile.
-            {% endif %}
-          </td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      <div style="font-size:9px;color:#6C757D;margin-top:8px;">
-        Health Score = 40% Activation + 35% Regularity + 25% Performance · ALERT se &lt;70 · VIP se ≥85
-      </div>
-    </div>
-    {% endif %}
 
     <!-- ── SECTION 5: CHANNEL BREAKDOWN ────────────────────────── -->
     <div class="section-title">Channel Breakdown</div>
