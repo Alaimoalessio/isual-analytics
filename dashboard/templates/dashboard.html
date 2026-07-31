@@ -141,7 +141,8 @@
                 <table class="reports-table">
                     <thead>
                         <tr>
-                            <th style="width: 40px;">#</th>
+                            <!-- il rank non ha piu' colonna propria: il badge sta dentro Contenuto -->
+                            <th class="nowrap">Data</th>
                             <th>Contenuto</th>
                             <th>Canale</th>
                             <th style="text-align: right;">Reach</th>
@@ -161,7 +162,42 @@
             </div>
         </section>
 
-        <!-- Sezione 5: Storico Report -->
+        <!-- Sezione 5: Worst Content -->
+        <!-- popolata dalla STESSA fetch di Top Content (loadTopContent in app.js):
+             le due tabelle devono nascere dalla stessa classifica, altrimenti la
+             mutua esclusione fra loro non e' garantita -->
+        <section class="section content-section">
+            <div class="section-header">
+                <h2>Worst Content — Content Score</h2>
+            </div>
+            <div class="table-container">
+                <table class="reports-table">
+                    <thead>
+                        <tr>
+                            <!-- il rank non ha piu' colonna propria: il badge sta dentro Contenuto -->
+                            <th class="nowrap">Data</th>
+                            <th>Contenuto</th>
+                            <th>Canale</th>
+                            <th style="text-align: right;">Reach</th>
+                            <th style="text-align: right;">Impressions</th>
+                            <th style="text-align: right;">ER %</th>
+                            <th style="text-align: right;">Score</th>
+                            <th>Partner</th>
+                        </tr>
+                    </thead>
+                    <tbody id="worst-content-body">
+                        <tr>
+                            <td colspan="8" class="text-center loading-text">Caricamento contenuti...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <!-- nota visibile solo quando il pool residuo e' < 3, per non far sembrare
+                 un troncamento arbitrario una tabella corta -->
+            <div id="worst-content-note" class="loading-text" style="display:none; padding: 8px 16px; font-size: 0.8125rem;"></div>
+        </section>
+
+        <!-- Sezione 6: Storico Report -->
         <section class="section history-section">
             <div class="section-header">
                 <h2>Storico Report</h2>

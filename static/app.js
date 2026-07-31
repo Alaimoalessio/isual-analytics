@@ -52,6 +52,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let trendChart = null;
     const partnersGrid = document.getElementById('partners-grid');
     const topContentBody = document.getElementById('top-content-body');
+    const worstContentBody = document.getElementById('worst-content-body');
+    const worstContentNote = document.getElementById('worst-content-note');
 
     // Nomi di brand/partner/tag/target e testi dei post arrivano da fonti esterne
     // (app di terzi, social): vanno escapati prima di finire in innerHTML, altrimenti
@@ -643,49 +645,83 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Una sola fetch popola Top e Worst. Non e' un'ottimizzazione: le due tabelle
+    // devono essere mutuamente esclusive, e questo e' garantito solo se nascono
+    // dalla stessa classifica calcolata sullo stesso snapshot di dati.
+    // Conseguenza pratica: non c'e' un secondo loader da ricordarsi di aggiungere
+    // ai due punti di refresh (apply-custom-date e il Promise.all di reloadData).
     async function loadTopContent() {
         const placeholder = (msg, cls = 'loading-text') =>
             `<tr><td colspan="8" class="text-center ${cls}">${msg}</td></tr>`;
 
+        // stesse soglie del PDF (templates/report.html): parita' visiva tra
+        // dashboard e report per lo stesso brand/filtro/periodo
+        const renderRows = rows => rows.map(c => {
+            let erColor;
+            if (c.er_post >= 3.0)      erColor = 'var(--green-positive)';
+            else if (c.er_post >= 1.5) erColor = 'var(--orange-warning)';
+            else                       erColor = 'var(--red-alert)';
+
+            return `
+                <tr>
+                    <td class="nowrap">${esc(c.date_fmt)}</td>
+                    <td>
+                        <span class="rank-badge">${c.rank}</span>
+                        <span style="font-weight: 600;">${esc(c.title_short)}</span>
+                    </td>
+                    <td>${esc(c.channel_upper)}</td>
+                    <td style="text-align: right;">${c.reach_fmt}</td>
+                    <td style="text-align: right;">${c.impr_fmt}</td>
+                    <td style="text-align: right; color: ${erColor}; font-weight: 600;">${c.er_fmt}</td>
+                    <td style="text-align: right; font-weight: 600;">${c.score_fmt}</td>
+                    <td class="partner-names">${(c.partner_names && c.partner_names.length)
+                        ? c.partner_names.map(n => `<div>${esc(n)}</div>`).join('')
+                        : '—'}</td>
+                </tr>
+            `;
+        }).join('');
+
         topContentBody.innerHTML = placeholder('Caricamento contenuti...');
+        worstContentBody.innerHTML = placeholder('Caricamento contenuti...');
+        worstContentNote.style.display = 'none';
         try {
             const response = await fetch(`/api/top-content${getQueryParams()}`);
             const result = await response.json();
 
             if (result.success) {
-                if (result.data.length === 0) {
-                    topContentBody.innerHTML = placeholder('Nessun contenuto per il periodo selezionato');
-                    return;
+                const worst = result.worst || [];
+                const total = result.total_content || 0;
+
+                topContentBody.innerHTML = result.data.length
+                    ? renderRows(result.data)
+                    : placeholder('Nessun contenuto per il periodo selezionato');
+
+                if (worst.length) {
+                    worstContentBody.innerHTML = renderRows(worst);
+                    // pool residuo piu' corto di 3: senza nota sembrerebbe un troncamento
+                    if (worst.length < 3) {
+                        const n = worst.length;
+                        worstContentNote.textContent =
+                            `Solo ${n} ${n === 1 ? 'contenuto' : 'contenuti'} oltre i ` +
+                            `${result.data.length} di Top Content nel periodo selezionato.`;
+                        worstContentNote.style.display = 'block';
+                    }
+                } else if (total === 0) {
+                    worstContentBody.innerHTML = placeholder('Nessun contenuto per il periodo selezionato');
+                } else {
+                    // contenuti presenti ma tutti gia' mostrati sopra: causa diversa,
+                    // messaggio diverso (stesso criterio della Leaderboard nel PDF)
+                    worstContentBody.innerHTML = placeholder(
+                        `${total} ${total === 1 ? 'contenuto' : 'contenuti'} nel periodo, ` +
+                        `${total === 1 ? 'già mostrato' : 'già mostrati'} per intero in Top Content`);
                 }
-
-                topContentBody.innerHTML = result.data.map(c => {
-                    // stesse soglie del PDF (templates/report.html): parita' visiva tra
-                    // dashboard e report per lo stesso brand/filtro/periodo
-                    let erColor;
-                    if (c.er_post >= 3.0)      erColor = 'var(--green-positive)';
-                    else if (c.er_post >= 1.5) erColor = 'var(--orange-warning)';
-                    else                       erColor = 'var(--red-alert)';
-
-                    return `
-                        <tr>
-                            <td>${c.rank}</td>
-                            <td style="font-weight: 600;">${esc(c.title_short)}</td>
-                            <td>${esc(c.channel_upper)}</td>
-                            <td style="text-align: right;">${c.reach_fmt}</td>
-                            <td style="text-align: right;">${c.impr_fmt}</td>
-                            <td style="text-align: right; color: ${erColor}; font-weight: 600;">${c.er_fmt}</td>
-                            <td style="text-align: right; font-weight: 600;">${c.score_fmt}</td>
-                            <td class="partner-names">${(c.partner_names && c.partner_names.length)
-                                ? c.partner_names.map(n => `<div>${esc(n)}</div>`).join('')
-                                : '—'}</td>
-                        </tr>
-                    `;
-                }).join('');
             } else {
                 topContentBody.innerHTML = placeholder('Errore caricamento contenuti', 'alert');
+                worstContentBody.innerHTML = placeholder('Errore caricamento contenuti', 'alert');
             }
         } catch (error) {
             topContentBody.innerHTML = placeholder('Errore connessione server', 'alert');
+            worstContentBody.innerHTML = placeholder('Errore connessione server', 'alert');
         }
     }
 

@@ -121,7 +121,11 @@ def calc_overview(df_overview, df_amplification, df_adoption, days=30, start_dat
     return data
 
 
-def calc_content_score(df, top_n=5):
+def _score_content(df):
+    # Classifica COMPLETA per content score, senza troncamento: la stessa
+    # classifica alimenta sia Top che Worst. Calcolarla una volta sola e' quello
+    # che rende la mutua esclusione fra le due tabelle strutturale invece che un
+    # filtro da ricordarsi (vedi calc_worst_content).
     # content score = ER_post * 0.6 + reach_normalizzata * 0.4
     if df.empty:
         return df.copy()
@@ -135,11 +139,21 @@ def calc_content_score(df, top_n=5):
         lambda r: r["engagement"] / r["reach"] * 100 if r["reach"] > 0 else 0, axis=1
     )
 
+    # normalizzazione sul pool INTERO, prima di qualsiasi taglio: cosi' lo score di
+    # una riga non dipende da quante righe vengono poi mostrate, e Top e Worst sono
+    # espressi sulla stessa scala.
     max_reach = df["reach"].max()
     df["reach_norm"] = df["reach"] / max_reach if max_reach > 0 else 0
 
     df["content_score"] = (df["er_post"] * 0.6) + (df["reach_norm"] * 100 * 0.4)
-    df = df.sort_values("content_score", ascending=False).head(top_n)
+    # mergesort = stabile: a parita' di score l'ordine resta quello di arrivo dal DB
+    # invece di cambiare fra due generazioni dello stesso report.
+    df = df.sort_values("content_score", ascending=False, kind="mergesort")
+
+    # rank sulla classifica intera, assegnato PRIMA di ogni slice: Worst mostra le
+    # ultime posizioni reali (su 21 contenuti: 21, 20, 19), non una numerazione
+    # locale che ripartirebbe da 1 e collidere con quella di Top.
+    df["rank"] = range(1, len(df) + 1)
 
     df["reach_fmt"]      = df["reach"].apply(fmt_number)
     df["impr_fmt"]       = df["impressions"].apply(fmt_number)
@@ -148,8 +162,36 @@ def calc_content_score(df, top_n=5):
     df["score_fmt"]      = df["content_score"].apply(lambda x: f"{x:.1f}")
     df["title_short"]    = df["title"].fillna("—").str[:45]
     df["channel_upper"]  = df["channel"].str.upper()
+    # data formattata QUI e non nei template: PDF e dashboard mostrano la stessa
+    # stringa, e il client riceve testo invece di un Timestamp non serializzabile.
+    # published_at e' MIN(...) dalla query: la prima pubblicazione del gruppo.
+    df["date_fmt"]       = pd.to_datetime(df["published_at"]).dt.strftime("%d/%m/%Y")
 
     return df.reset_index(drop=True)
+
+
+def calc_content_score(df, top_n=3):
+    # i top_n contenuti migliori
+    scored = _score_content(df)
+    if scored.empty:
+        return scored
+    return scored.head(top_n).reset_index(drop=True)
+
+
+def calc_worst_content(df, top_n=3, worst_n=3):
+    # I worst_n contenuti peggiori, ESCLUSI i top_n gia' mostrati da
+    # calc_content_score. L'esclusione e' uno slice posizionale sulla stessa
+    # classifica ordinata (.iloc[top_n:]) e non un anti-join su post_id+channel:
+    # non esiste il caso in cui una riga finisca in entrambe le tabelle.
+    # Con N righe totali il risultato ha min(worst_n, max(0, N - top_n)) righe:
+    # N<=top_n -> tabella vuota, ed e' il comportamento atteso.
+    scored = _score_content(df)
+    if scored.empty:
+        return scored
+    # tail() dopo lo slice = le posizioni piu' basse; [::-1] mette la PEGGIORE in cima,
+    # senza toccare il rank, che resta quello globale.
+    worst = scored.iloc[top_n:].tail(worst_n)
+    return worst.iloc[::-1].reset_index(drop=True)
 
 
 def calc_partner_health(df):

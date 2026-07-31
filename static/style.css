@@ -520,6 +520,29 @@ body {
     border-bottom: none;
 }
 
+/* Badge circolare del rank dentro la cella Contenuto di Top/Worst Content.
+   Replica .rank-badge di templates/report.html (cerchio 20px, testo bianco) per
+   dare alla dashboard la stessa resa del PDF: prima qui il rank era un numero nudo.
+   Colore fisso --blue-primary e non variabile di tema: il badge deve restare
+   leggibile (testo bianco) anche in dark mode. */
+.reports-table .rank-badge {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--blue-primary);
+    color: #FFFFFF;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-align: center;
+    line-height: 20px;
+    margin-right: 6px;
+    flex-shrink: 0;
+}
+
+/* la data (dd/mm/yyyy) non deve mai spezzarsi su due righe */
+.reports-table .nowrap { white-space: nowrap; }
+
 /* Colonna Partner di Top Content: un nome per <div>, impilati.
    Con il padding pieno la colonna resta stretta e i nomi si spezzano a meta'
    ("Hotel / Losanna"), rendendo ambiguo dove finisce un partner e inizia il

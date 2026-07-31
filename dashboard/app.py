@@ -273,17 +273,23 @@ def api_top_content():
         brand_id, partner_ids, single_partner, days, start_date, end_date = get_params()
         df = db.get_content_performance(brand_id, partner_ids, start_date, end_date)
         if df.empty:
-            return jsonify({"success": True, "data": []})
+            return jsonify({"success": True, "data": [], "worst": [], "total_content": 0})
 
-        # stessa funzione usata dal PDF (report.py): il troncamento a 5 righe e' dentro
-        # kpi.calc_content_score, cosi' dashboard e report mostrano le stesse identiche righe
+        # stesse funzioni usate dal PDF (report.py): il troncamento a 3 righe e' dentro
+        # kpi, cosi' dashboard e report mostrano le stesse identiche righe.
+        # Top e Worst si calcolano QUI, dallo stesso df e nella stessa richiesta: due
+        # endpoint separati leggerebbero il DB in due istanti diversi e una pubblicazione
+        # arrivata nel mezzo romperebbe la mutua esclusione fra le due tabelle.
         result = kpi.calc_content_score(df)
+        worst  = kpi.calc_worst_content(df)
 
         # colonne selezionate a mano, non to_dict() sul df intero: published_at e' un
         # Timestamp non serializzabile, e reach_norm/title/post_id non servono al client
-        rows = [
-            {
-                "rank":          i + 1,
+        def serialize(r):
+            return {
+                # rank della classifica intera, calcolato in kpi._score_content: per Worst
+                # sono le ultime posizioni reali (21/20/19), non una numerazione locale
+                "rank":          int(r["rank"]),
                 "title_short":   r["title_short"],
                 "channel":       r["channel"],
                 "channel_upper": r["channel_upper"],
@@ -292,14 +298,21 @@ def api_top_content():
                 "er_fmt":        r["er_fmt"],
                 "er_post":       float(r["er_post"]),   # grezzo: serve al JS per la soglia colore
                 "score_fmt":     r["score_fmt"],
+                # stringa gia' formattata in kpi._score_content, non il Timestamp:
+                # stesso testo del PDF e nessun problema di serializzazione JSON
+                "date_fmt":      r["date_fmt"],
                 # lista di nomi, non il conteggio: stessa colonna e stessi nomi del PDF.
                 # ARRAY_AGG torna None quando il contenuto e' stato pubblicato solo dal
                 # brand (partner_id NULL) -> lista vuota, che il JS rende come "—".
                 "partner_names": list(r["partner_names"]) if r["partner_names"] is not None else [],
             }
-            for i, r in result.iterrows()
-        ]
-        return jsonify({"success": True, "data": rows})
+
+        rows       = [serialize(r) for _, r in result.iterrows()]
+        worst_rows = [serialize(r) for _, r in worst.iterrows()]
+        # total_content serve al JS per distinguere "nessun contenuto nel periodo" da
+        # "contenuti tutti gia' in Top": la lista worst e' vuota in entrambi i casi
+        return jsonify({"success": True, "data": rows, "worst": worst_rows,
+                        "total_content": int(len(df))})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 

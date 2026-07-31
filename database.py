@@ -361,7 +361,12 @@ def get_content_performance(brand_id, partner_id, start_date, end_date):
             -- score ma non aggiungono un nome vuoto alla lista.
             ARRAY_AGG(DISTINCT TRIM(p.name) ORDER BY TRIM(p.name))
                 FILTER (WHERE p.name IS NOT NULL)         AS partner_names,
-            MAX(pub.published_at)        AS published_at
+            -- MIN e non MAX: la data mostrata e' quella della PRIMA pubblicazione del
+            -- gruppo, cioe' quando il contenuto e' partito. Con MAX la data si
+            -- sposterebbe in avanti ogni volta che un partner ritardatario ripubblica,
+            -- e lo stesso contenuto mostrerebbe date diverse in due report sullo stesso
+            -- periodo. NB: e' il minimo DENTRO la finestra filtrata, non in assoluto.
+            MIN(pub.published_at)        AS published_at
         FROM publications pub
         JOIN posts po ON po.id = pub.post_id
         -- join su chiave primaria: 1:1, non moltiplica le righe e non gonfia le SUM

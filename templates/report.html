@@ -216,6 +216,9 @@
     overflow-wrap: break-word;
     vertical-align: top;
   }
+  /* la data (dd/mm/yyyy) non deve mai spezzarsi su due righe */
+  .nowrap { white-space: nowrap; }
+
   .rank-badge {
     display: inline-block;
     width: 20px; height: 20px;
@@ -418,11 +421,18 @@
                 <span class="badge badge-red">⚠ ALERT</span>
               {% endif %}
             </td>
+            {# la colonna Tipo (Top Performer / Amplifier / Quality Niche / Weak) e' stata
+               rimossa. Il calcolo resta in kpi.calc_partner_health: la colonna
+               classification e' ancora nel DataFrame, semplicemente non piu' mostrata qui.
+               NB: le card "Top Partner" della dashboard mostrano ancora una
+               classificazione, ma calcolata da classify_v2 in dashboard/app.py, che e'
+               una funzione diversa e indipendente da questa. #}
           </tr>
           {% else %}
           {# tabella vuota per due motivi diversi: gruppo senza partner, oppure partner
              inattivi nel periodo. total_partners e' il denominatore di Network Adoption
              (la "Y" di "X/Y partner attivi"), ed e' una stringa: confronto con '0'. #}
+          {# colspan 7 e non 8: la Leaderboard ha perso la colonna Tipo #}
           <tr><td colspan="7" style="text-align:center;color:#6C757D;padding:20px;">
             {% if filter_kind in ('tag', 'target') %}
               {% if kpi.total_partners == '0' %}
@@ -445,13 +455,14 @@
     </div>
     {% endif %}
 
-    <!-- ── SECTION 4: CONTENT PERFORMANCE ─────────────────────── -->
+    <!-- ── SECTION 4: TOP CONTENT ──────────────────────────────── -->
     <div class="section-title">Top Content — Content Score</div>
     <div class="table-card">
       <table>
         <thead>
           <tr>
-            <th>#</th>
+            {# il rank non ha piu' una colonna propria: il badge vive dentro Contenuto #}
+            <th>Data</th>
             <th>Contenuto</th>
             <th>Canale</th>
             <th class="right">Reach</th>
@@ -465,8 +476,14 @@
         <tbody>
           {% for row in content_rows %}
           <tr>
-            <td><span class="rank-badge">{{ loop.index }}</span></td>
-            <td style="max-width:140px; font-weight:600;">{{ row.title_short }}</td>
+            {# MIN(published_at) del gruppo: la prima pubblicazione del contenuto #}
+            <td class="nowrap">{{ row.date_fmt }}</td>
+            {# badge inline prima del titolo: su titolo che va a capo il testo scorre
+               sotto il badge (Opzione A, scelta deliberata) #}
+            <td style="max-width:150px;">
+              <span class="rank-badge" style="margin-right:6px;">{{ row.rank }}</span>
+              <span style="font-weight:600;">{{ row.title_short }}</span>
+            </td>
             <td>
               <span class="channel-badge ch-{{ row.channel }}">
                 {{ row.channel_upper }}
@@ -500,7 +517,83 @@
       </div>
     </div>
 
-    <!-- ── SECTION 5: CHANNEL BREAKDOWN ────────────────────────── -->
+    <!-- ── SECTION 5: WORST CONTENT ────────────────────────────── -->
+    {# Stessa classifica di Top Content, letta dal fondo. Le righe sono per
+       costruzione disgiunte da quelle sopra (kpi.calc_worst_content), quindi la
+       tabella puo' legittimamente avere meno di 3 righe, o nessuna. #}
+    <div class="section-title">Worst Content — Content Score</div>
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr>
+            {# il rank non ha piu' una colonna propria: il badge vive dentro Contenuto #}
+            <th>Data</th>
+            <th>Contenuto</th>
+            <th>Canale</th>
+            <th class="right">Reach</th>
+            <th class="right">Impressions</th>
+            <th class="right">ER %</th>
+            <th class="right">Score</th>
+            <th>Partner</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in worst_rows %}
+          <tr>
+            {# MIN(published_at) del gruppo: la prima pubblicazione del contenuto #}
+            <td class="nowrap">{{ row.date_fmt }}</td>
+            {# rank della classifica INTERA, non della sola tabella: su 21 contenuti
+               le righe sono 21/20/19. Per questo non si usa loop.index. #}
+            <td style="max-width:150px;">
+              <span class="rank-badge" style="margin-right:6px;">{{ row.rank }}</span>
+              <span style="font-weight:600;">{{ row.title_short }}</span>
+            </td>
+            <td>
+              <span class="channel-badge ch-{{ row.channel }}">
+                {{ row.channel_upper }}
+              </span>
+            </td>
+            <td class="metric">{{ row.reach_fmt }}</td>
+            <td class="right">{{ row.impr_fmt }}</td>
+            <td class="metric" style="color:
+              {% if row.er_post >= 3.0 %}#2F9E44{% elif row.er_post >= 1.5 %}#F08C00{% else %}#E03131{% endif %}">
+              {{ row.er_fmt }}
+            </td>
+            <td class="metric" style="color:{{ colors.primary_color }};">{{ row.score_fmt }}</td>
+            <td class="partner-names">
+              {%- if row.partner_names -%}
+                {%- for nome in row.partner_names %}<div>{{ nome }}</div>{% endfor -%}
+              {%- else -%}—{%- endif -%}
+            </td>
+          </tr>
+          {% else %}
+          {# tabella vuota per due motivi diversi: nessun contenuto nel periodo, oppure
+             contenuti che ci sono ma stanno tutti gia' in Top Content. #}
+          <tr><td colspan="8" style="text-align:center;color:#6C757D;padding:20px;">
+            {% if content_total == 0 %}
+              Nessun contenuto per il periodo selezionato.
+            {% else %}
+              {{ content_total }} {{ 'contenuto' if content_total == 1 else 'contenuti' }}
+              nel periodo, {{ 'già mostrato' if content_total == 1 else 'già mostrati' }}
+              per intero in Top Content.
+            {% endif %}
+          </td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div style="font-size:9px;color:#6C757D;margin-top:8px;">
+        {# con 4 o 5 contenuti totali la tabella e' corta perche' il pool residuo lo e':
+           senza questa riga sembrerebbe un troncamento arbitrario. #}
+        {% if worst_rows and worst_rows|length < 3 %}
+          Solo {{ worst_rows|length }}
+          {{ 'contenuto' if worst_rows|length == 1 else 'contenuti' }}
+          oltre i {{ content_rows|length }} di Top Content nel periodo selezionato.<br/>
+        {% endif %}
+        Content Score = (ER × 0.6) + (Reach normalizzata × 0.4)
+      </div>
+    </div>
+
+    <!-- ── SECTION 6: CHANNEL BREAKDOWN ────────────────────────── -->
     <div class="section-title">Channel Breakdown</div>
     <div class="two-col">
       <div class="table-card" style="margin-bottom:0;">
