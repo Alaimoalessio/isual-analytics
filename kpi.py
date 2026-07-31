@@ -54,7 +54,15 @@ def safe(val, default=0):
 
 
 def calc_overview(df_overview, df_amplification, df_adoption, days=30, start_date=None, end_date=None,
-                   partner_filtered=False):
+                   partner_filtered=False, amp_filtered=False):
+    # partner_filtered e amp_filtered sono flag DIVERSI e non vanno unificati:
+    #   partner_filtered = e' selezionato UN SINGOLO partner -> Network Adoption N/A.
+    #     Con Tag/Target l'adoption si calcola sul gruppo ed e' significativa.
+    #   amp_filtered = e' attivo un filtro QUALSIASI (partner, tag o target), cioe'
+    #     partner_ids is not None -> Amplification N/A. Il denominatore viene dalle
+    #     pubblicazioni con partner_id NULL, che brand_filter esclude per costruzione
+    #     appena aggiunge "partner_id = ANY(...)": vale per Tag/Target quanto per il
+    #     singolo partner, quindi partner_filtered qui NON basterebbe.
     if df_overview.empty:
         total_reach = total_impressions = total_engagement = total_posts = 0
     else:
@@ -77,6 +85,21 @@ def calc_overview(df_overview, df_amplification, df_adoption, days=30, start_dat
         amp_row = df_amplification.set_index("source")["reach"]
         brand_reach = safe(amp_row.get("brand", 0))
     amp_factor = (total_reach / brand_reach) if brand_reach > 0 else 0
+
+    # Un amplification factor di 0.0x non e' mai una misura reale: significherebbe che la
+    # rete non ha raggiunto nessuno, mentre il numeratore (total_reach) e' tipicamente
+    # grande. E' una divisione non eseguibile, quindi va mostrata N/A e non come un valore
+    # pessimo colorato di rosso. Due cause distinte, con messaggi diversi a valle:
+    #   'filter'         -> filtro attivo: il denominatore e' escluso per costruzione
+    #   'no_brand_reach' -> nessun filtro, ma il brand non ha reach diretto misurato
+    # L'ordine conta: col filtro attivo brand_reach e' 0 comunque, e la causa da riportare
+    # e' il filtro, non il dato mancante.
+    if amp_filtered:
+        amp_na_reason = "filter"
+    elif brand_reach <= 0:
+        amp_na_reason = "no_brand_reach"
+    else:
+        amp_na_reason = None
 
     # calcolo network adoption
     if df_adoption.empty:
@@ -109,6 +132,8 @@ def calc_overview(df_overview, df_amplification, df_adoption, days=30, start_dat
         "amp_raw":           amp_factor,
         "adoption_raw":      adoption_pct,
         "network_scope_na":  partner_filtered,
+        "amp_scope_na":      amp_na_reason is not None,
+        "amp_na_reason":     amp_na_reason,
     }
 
     # Network Adoption è una metrica calcolata sull'intera rete di partner:
@@ -117,6 +142,12 @@ def calc_overview(df_overview, df_amplification, df_adoption, days=30, start_dat
         data["adoption_pct"]    = "N/A"
         data["active_partners"] = "—"
         data["total_partners"]  = "—"
+
+    # stesso trattamento per Amplification quando il rapporto non è calcolabile.
+    # amp_raw resta il valore grezzo (0) per non rompere i consumatori esistenti:
+    # è amp_scope_na a dire che quello 0 non va né mostrato né colorato.
+    if data["amp_scope_na"]:
+        data["amplification"] = "N/A"
 
     return data
 

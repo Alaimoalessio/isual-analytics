@@ -51,14 +51,15 @@
     color: white;
     overflow-wrap: break-word;
   }
+  /* Wordmark ISUAL: immagine al posto del testo. height 28px replica l'ingombro del
+     vecchio wordmark testuale (font-size:28px), width:auto ne preserva le proporzioni.
+     margin-left:auto e non text-align: su un <img> block l'allineamento a destra di
+     .header-meta non avrebbe effetto. */
   .header-logo {
-    font-size: 28px;
-    font-weight: 800;
-    letter-spacing: -1px;
-    color: white;
-  }
-  .header-logo span {
-    color: {{ colors.accent_color }};
+    height: 28px;
+    width: auto;
+    display: block;
+    margin-left: auto;
   }
   .header-subtitle {
     font-size: 11px;
@@ -330,7 +331,11 @@
       <div class="header-subtitle">{{ filter_label }}</div>
     </div>
     <div class="header-meta">
-      <div class="header-logo">isual<span>.</span></div>
+      {# path fisso risolto in report.py; se il file manca isual_logo e' None e
+         l'header esce senza logo invece di rompere il render #}
+      {% if isual_logo %}
+      <img class="header-logo" src="file://{{ isual_logo }}" alt="ISUAL">
+      {% endif %}
       <div class="header-subtitle">Analytics · Performance Report</div>
       <div class="header-dates">{{ kpi.date_range }}</div>
     </div>

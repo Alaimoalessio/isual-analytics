@@ -118,6 +118,16 @@ def generate_report(brand_id=None, partner_id=None, tag_id=None, target_id=None,
             'logo_url':        None
         }
 
+    # Wordmark ISUAL dell'header: path FISSO, non dipende dal brand (a differenza di
+    # logo_url, che e' il logo del cliente). Stesso pattern del logo brand qui sotto:
+    # path assoluto perche' WeasyPrint non ha un base_url per risolvere i relativi, e
+    # controllo di esistenza perche' un file mancante deve dare un header senza logo,
+    # non un errore che blocca la generazione del PDF.
+    isual_logo = os.path.join(os.path.dirname(__file__), "static", "brand", "isual-wordmark.png")
+    if not os.path.exists(isual_logo):
+        print(f"[ISUAL] ATTENZIONE: wordmark non trovato in {isual_logo}, header senza logo")
+        isual_logo = None
+
     # converti logo_url in path assoluto per WeasyPrint
     if brand_colors.get('logo_url'):
         logo_path = os.path.join(os.path.dirname(__file__), brand_colors['logo_url'])
@@ -130,8 +140,11 @@ def generate_report(brand_id=None, partner_id=None, tag_id=None, target_id=None,
     print("[2/4] Calcolo metriche...")
     # N/A su Network Adoption dipende dalla selezione (single_partner) e non dalla
     # lunghezza della lista risolta: identico alla dashboard.
+    # amp_filtered usa partner_ids e non single_partner: il denominatore di Amplification
+    # sparisce con QUALSIASI filtro partner, Tag e Target inclusi (vedi kpi.calc_overview).
     kpi_data       = kpi.calc_overview(df_overview, df_amplif, df_adoption, days, start_date, end_date,
-                                        partner_filtered=single_partner)
+                                        partner_filtered=single_partner,
+                                        amp_filtered=partner_ids is not None)
     df_content_ok  = kpi.calc_content_score(df_content)
     # stesso df di partenza: la mutua esclusione Top/Worst vale solo se le due
     # tabelle nascono dalla stessa classifica (vedi kpi.calc_worst_content)
@@ -151,13 +164,25 @@ def generate_report(brand_id=None, partner_id=None, tag_id=None, target_id=None,
         adp_color = soglia_colore(kpi_data["adoption_raw"], 70, 40)
         adp_sub   = f'{kpi_data["active_partners"]}/{kpi_data["total_partners"]} partner attivi'
 
+    # Amplification: stesso trattamento, ma con due cause distinte da spiegare.
+    # Grigio e non colore-soglia: con amp_raw=0 la soglia darebbe rosso, cioe' "pessimo",
+    # su un dato che non e' stato misurato.
+    if kpi_data["amp_scope_na"]:
+        amp_color = "#6C757D"
+        amp_sub   = ("Metrica di rete — non disponibile con filtro attivo"
+                     if kpi_data["amp_na_reason"] == "filter"
+                     else "Reach diretto del brand non disponibile nel periodo")
+    else:
+        amp_color = soglia_colore(kpi_data["amp_raw"], 2.0, 1.2)
+        amp_sub   = "Reach totale / Reach brand"
+
     kpi_cards = {
         "reach":                {"value": kpi_data["total_reach"],       "color": None,                                         "subtitle": "Audience unica raggiunta",  "highlight": True},
         "impressions":          {"value": kpi_data["total_impressions"], "color": None,                                         "subtitle": "Esposizioni totali",        "highlight": False},
         "engagement_total":     {"value": kpi_data["total_engagement"],  "color": None,                                         "subtitle": "Like + Commenti + Share",   "highlight": False},
         "post_pubblicati":      {"value": kpi_data["total_posts"],       "color": None,                                         "subtitle": "Status OK nel periodo",     "highlight": False},
         "engagement_rate":      {"value": kpi_data["engagement_rate"],   "color": soglia_colore(kpi_data["er_raw"],  3.0, 1.5), "subtitle": "Engagement / Reach × 100",  "highlight": False},
-        "amplification_factor": {"value": kpi_data["amplification"],     "color": soglia_colore(kpi_data["amp_raw"], 2.0, 1.2), "subtitle": "Reach totale / Reach brand", "highlight": False},
+        "amplification_factor": {"value": kpi_data["amplification"],     "color": amp_color,                                    "subtitle": amp_sub,                     "highlight": False},
         "network_adoption":     {"value": kpi_data["adoption_pct"],      "color": adp_color,                                    "subtitle": adp_sub,                     "highlight": False},
         "frequency":            {"value": kpi_data["frequency"],         "color": None,                                         "subtitle": "Impressions / Reach",       "highlight": False},
     }
@@ -190,6 +215,7 @@ def generate_report(brand_id=None, partner_id=None, tag_id=None, target_id=None,
         partner_rows=df_partners_ok.to_dict("records"),
         channel_rows=df_channels_ok.to_dict("records"),
         colors=brand_colors,
+        isual_logo=isual_logo,
         brand_name=brand_name,
         filter_label=filter_label,
         single_partner=single_partner,

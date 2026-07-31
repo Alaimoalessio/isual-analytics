@@ -155,8 +155,11 @@ def api_kpi():
         # Network Adoption è una metrica di rete: con un singolo partner filtrato va mostrata N/A.
         # Con un filtro Tag/Target si calcola normalmente sul gruppo, quindi il flag segue la
         # selezione (single_partner) e non la lunghezza della lista.
+        # amp_filtered usa partner_ids e non single_partner: il denominatore di
+        # Amplification sparisce con QUALSIASI filtro partner, Tag e Target inclusi.
         kpi_data = kpi.calc_overview(df_overview, df_amplif, df_adoption, days, start_date, end_date,
-                                     partner_filtered=single_partner)
+                                     partner_filtered=single_partner,
+                                     amp_filtered=partner_ids is not None)
 
         # calcola trend confrontando col periodo precedente
         prev_end   = start_date
