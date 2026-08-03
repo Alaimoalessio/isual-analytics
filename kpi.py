@@ -78,26 +78,42 @@ def calc_overview(df_overview, df_amplification, df_adoption, days=30, start_dat
     # calcolo frequency
     frequency = (total_impressions / total_reach) if total_reach > 0 else 0
 
-    # calcolo amplification factor
+    # Amplification Factor: QUOTA del reach totale generata dalla rete partner,
+    # cioe' partner / (partner + brand) * 100. Non e' piu' il moltiplicatore
+    # total_reach / brand_reach: il nome della card resta, la scala no (0-100%).
+    #
+    # Numeratore e denominatore vengono ENTRAMBI da df_amplification, che e' la stessa
+    # somma di get_overview spezzata per source (identica brand_filter, identica
+    # tabella): il rapporto e' cosi' autoconsistente per costruzione, invece di
+    # dipendere dal fatto che due query separate restino allineate.
     if df_amplification.empty:
-        brand_reach = 0
+        brand_reach = partner_reach = 0
     else:
-        amp_row = df_amplification.set_index("source")["reach"]
-        brand_reach = safe(amp_row.get("brand", 0))
-    amp_factor = (total_reach / brand_reach) if brand_reach > 0 else 0
+        amp_row       = df_amplification.set_index("source")["reach"]
+        brand_reach   = safe(amp_row.get("brand", 0))
+        partner_reach = safe(amp_row.get("partner", 0))
+    amp_total  = partner_reach + brand_reach
+    amp_factor = (partner_reach / amp_total * 100) if amp_total > 0 else 0
 
-    # Un amplification factor di 0.0x non e' mai una misura reale: significherebbe che la
-    # rete non ha raggiunto nessuno, mentre il numeratore (total_reach) e' tipicamente
-    # grande. E' una divisione non eseguibile, quindi va mostrata N/A e non come un valore
-    # pessimo colorato di rosso. Due cause distinte, con messaggi diversi a valle:
-    #   'filter'         -> filtro attivo: il denominatore e' escluso per costruzione
-    #   'no_brand_reach' -> nessun filtro, ma il brand non ha reach diretto misurato
-    # L'ordine conta: col filtro attivo brand_reach e' 0 comunque, e la causa da riportare
-    # e' il filtro, non il dato mancante.
+    # Due cause distinte di N/A, con messaggi diversi a valle:
+    #   'filter'   -> filtro attivo (partner, tag o target)
+    #   'no_reach' -> nessun reach misurato da nessuna delle due fonti (0/0 genuino)
+    #
+    # L'ORDINE E' CRITICO e non va invertito. Con un filtro attivo brand_filter
+    # aggiunge "partner_id = ANY(...)", che elimina dal result set le pubblicazioni
+    # brand (partner_id NULL): la riga 'brand' non arriva proprio, quindi brand_reach
+    # e' 0 e la formula darebbe un 100% pulito e credibile — cioe' "tutto il reach
+    # viene dalla rete" — che e' invece un artefatto del filtro. Con la vecchia
+    # formula l'errore si autocorreggeva (brand_reach 0 -> divisione impossibile ->
+    # N/A comunque); con questa formula il guard 'filter' e' l'UNICA cosa che
+    # impedisce di pubblicare quel numero falso.
+    #
+    # Nota: brand_reach == 0 NON e' piu' una causa di N/A. Un brand senza reach
+    # diretto ma con rete attiva vale legittimamente 100%, ed e' il caso comune.
     if amp_filtered:
         amp_na_reason = "filter"
-    elif brand_reach <= 0:
-        amp_na_reason = "no_brand_reach"
+    elif amp_total <= 0:
+        amp_na_reason = "no_reach"
     else:
         amp_na_reason = None
 
@@ -124,11 +140,16 @@ def calc_overview(df_overview, df_amplification, df_adoption, days=30, start_dat
         "total_posts":       str(int(total_posts)),
         "engagement_rate":   f"{er:.1f}%",
         "frequency":         f"{frequency:.1f}x",
-        "amplification":     f"{amp_factor:.1f}x",
+        # 1 decimale e non :.0f: 99.6% arrotondato darebbe "100%", indistinguibile dal
+        # brand con reach diretto esattamente zero. Sono due situazioni diverse, e 100%
+        # e' proprio il valore piu' frequente di questa metrica.
+        "amplification":     f"{amp_factor:.1f}%",
         "adoption_pct":      f"{adoption_pct:.0f}%",
         "active_partners":   str(active),
         "total_partners":    str(total_p),
         "er_raw":            er,
+        # percentuale 0-100, non piu' un moltiplicatore: chi la consuma per soglie o
+        # per delta di trend deve usare la stessa scala (vedi dashboard/app.py)
         "amp_raw":           amp_factor,
         "adoption_raw":      adoption_pct,
         "network_scope_na":  partner_filtered,
@@ -143,9 +164,12 @@ def calc_overview(df_overview, df_amplification, df_adoption, days=30, start_dat
         data["active_partners"] = "—"
         data["total_partners"]  = "—"
 
-    # stesso trattamento per Amplification quando il rapporto non è calcolabile.
-    # amp_raw resta il valore grezzo (0) per non rompere i consumatori esistenti:
-    # è amp_scope_na a dire che quello 0 non va né mostrato né colorato.
+    # stesso trattamento per Amplification quando la quota non è significativa.
+    # ATTENZIONE: con causa 'filter' amp_raw NON è 0, è 100.0 — il filtro toglie dal
+    # result set le pubblicazioni brand, quindi la formula trova solo reach partner e
+    # calcola una quota del 100% perfettamente credibile e del tutto falsa. È solo
+    # amp_scope_na a dire che quel numero non va mostrato: chi legge amp_raw senza
+    # controllarlo pubblica l'artefatto.
     if data["amp_scope_na"]:
         data["amplification"] = "N/A"
 

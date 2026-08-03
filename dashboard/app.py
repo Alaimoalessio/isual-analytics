@@ -183,11 +183,17 @@ def api_kpi():
             prev_engagement = float(prev_row['total_engagement'])  if pd.notna(prev_row['total_engagement'])  else 0
             prev_er         = (prev_engagement / prev_reach * 100) if prev_reach > 0 else 0
 
+            # Stessa formula di kpi.calc_overview (quota % dalla rete partner), non il
+            # vecchio moltiplicatore: il delta confronta prev con kpi_data['amp_raw'],
+            # e due scale diverse darebbero una freccia di trend priva di senso senza
+            # rompere nulla di visibile.
             prev_amp_df = db.get_amplification(brand_id, partner_ids, prev_start, prev_end)
             if not prev_amp_df.empty:
                 amp_row         = prev_amp_df.set_index("source")["reach"]
-                prev_br         = float(amp_row.get("brand", 0)) if pd.notna(amp_row.get("brand", 0)) else 0
-                prev_amp_factor = (prev_reach / prev_br) if prev_br > 0 else 0
+                prev_br         = float(amp_row.get("brand", 0))   if pd.notna(amp_row.get("brand", 0))   else 0
+                prev_pr         = float(amp_row.get("partner", 0)) if pd.notna(amp_row.get("partner", 0)) else 0
+                prev_amp_total  = prev_pr + prev_br
+                prev_amp_factor = (prev_pr / prev_amp_total * 100) if prev_amp_total > 0 else 0
             else:
                 prev_amp_factor = 0
 

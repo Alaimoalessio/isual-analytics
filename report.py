@@ -164,17 +164,22 @@ def generate_report(brand_id=None, partner_id=None, tag_id=None, target_id=None,
         adp_color = soglia_colore(kpi_data["adoption_raw"], 70, 40)
         adp_sub   = f'{kpi_data["active_partners"]}/{kpi_data["total_partners"]} partner attivi'
 
-    # Amplification: stesso trattamento, ma con due cause distinte da spiegare.
-    # Grigio e non colore-soglia: con amp_raw=0 la soglia darebbe rosso, cioe' "pessimo",
-    # su un dato che non e' stato misurato.
+    # Amplification: nessun colore-soglia, mai. E' una metrica di COMPOSIZIONE (da dove
+    # arriva il reach), non di performance (se il reach e' stato buono): una quota bassa
+    # significa che il brand ha un canale proprio che funziona, e colorarla di rosso
+    # direbbe "pubblica meno in proprio", che non e' un consiglio sensato. Il verso del
+    # "buono" dipende dalla strategia del brand e un semaforo lo deciderebbe al posto suo.
+    # La domanda "la rete sta funzionando?" ha gia' la sua card con verso definito:
+    # Network Adoption. Stesso trattamento neutro di Frequency, che e' l'altro rapporto
+    # senza semaforo. Il grigio resta solo per distinguere il testo dei due casi N/A.
+    amp_color = None
     if kpi_data["amp_scope_na"]:
         amp_color = "#6C757D"
         amp_sub   = ("Metrica di rete — non disponibile con filtro attivo"
                      if kpi_data["amp_na_reason"] == "filter"
-                     else "Reach diretto del brand non disponibile nel periodo")
+                     else "Nessun reach misurato nel periodo")
     else:
-        amp_color = soglia_colore(kpi_data["amp_raw"], 2.0, 1.2)
-        amp_sub   = "Reach totale / Reach brand"
+        amp_sub   = "Quota di reach dalla rete partner"
 
     kpi_cards = {
         "reach":                {"value": kpi_data["total_reach"],       "color": None,                                         "subtitle": "Audience unica raggiunta",  "highlight": True},

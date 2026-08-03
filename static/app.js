@@ -459,18 +459,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // classi colore-soglia (soglie invariate rispetto a prima)
+        // Amplification non ne ha piu' una: e' una metrica di composizione e va neutra,
+        // come Frequency (vedi report.py). Le vecchie soglie erano tarate sul
+        // moltiplicatore (>=5x, >=2x) e sulla scala 0-100% avrebbero colorato di verde
+        // qualsiasi valore sopra il 5%.
         const erClass  = data.er_raw >= 3 ? 'positive' : (data.er_raw >= 1 ? 'warning' : 'alert');
-        const ampClass = data.amp_raw >= 5 ? 'positive' : (data.amp_raw >= 2 ? 'warning' : 'alert');
         const adpClass = data.adoption_raw >= 70 ? 'positive' : (data.adoption_raw >= 40 ? 'warning' : 'alert');
 
         // Network Adoption è una metrica di rete: con un singolo partner filtrato è "N/A".
         // In quel caso la mostro neutra, senza colore-soglia né indicatore trend.
         const adpNeutral = data.network_scope_na;
 
-        // Amplification: "N/A" quando il denominatore (reach diretto del brand) non è
-        // disponibile — filtro attivo, oppure brand senza reach diretto nel periodo.
-        // Stessa resa neutra: con amp_raw=0 ampClass darebbe 'alert' (rosso) su un dato
-        // che non è stato misurato.
+        // Amplification: "N/A" con filtro attivo, oppure quando non c'è alcun reach
+        // misurato nel periodo (né partner né brand). La card è sempre senza colore;
+        // questo flag serve solo a sopprimere anche l'indicatore di trend, che su un
+        // "N/A" non ha niente da confrontare.
         const ampNeutral = data.amp_scope_na;
 
         // descrittore per kpi_key: valore, classe colore, html del trend.
@@ -481,7 +484,7 @@ document.addEventListener('DOMContentLoaded', () => {
             engagement_total:     { value: data.total_engagement.value,  cls: '',       trend: renderTrendIndicator(data.total_engagement) },
             post_pubblicati:      { value: data.total_posts.value,       cls: '',       trend: renderTrendIndicator(data.total_posts) },
             engagement_rate:      { value: data.engagement_rate.value,   cls: erClass,  trend: renderTrendIndicator(data.engagement_rate) },
-            amplification_factor: { value: data.amplification.value,     cls: ampNeutral ? '' : ampClass,
+            amplification_factor: { value: data.amplification.value,     cls: '',
                                     trend: ampNeutral ? '' : renderTrendIndicator(data.amplification) },
             network_adoption:     { value: data.adoption_pct.value,      cls: adpNeutral ? '' : adpClass,
                                     trend: adpNeutral ? '' : renderTrendIndicator(data.adoption_pct) },
