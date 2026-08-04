@@ -178,6 +178,13 @@ def generate_report(brand_id=None, partner_id=None, tag_id=None, target_id=None,
         amp_sub   = ("Metrica di rete — non disponibile con filtro attivo"
                      if kpi_data["amp_na_reason"] == "filter"
                      else "Nessun reach misurato nel periodo")
+    elif kpi_data["amp_raw"] == 100.0:
+        # Confronto esatto, non arrotondamento: il 100.0 pieno si ottiene solo con
+        # brand_reach == 0, cioe' partner/partner*100. Un 99.96 (brand con un filo di
+        # reach diretto) si stampa "100.0%" ma NON e' questo caso, e dirgli "tutto il
+        # reach" sarebbe falso: resta il sottotitolo generico. E' il motivo per cui il
+        # test va fatto su amp_raw e non sulla stringa gia' formattata.
+        amp_sub   = "Tutto il reach misurato arriva dalla rete partner"
     else:
         amp_sub   = "Quota di reach dalla rete partner"
 
