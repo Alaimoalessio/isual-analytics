@@ -1,4 +1,5 @@
 import io
+import re
 import base64
 import pandas as pd
 import matplotlib
@@ -31,6 +32,39 @@ def fmt_number(n):
     if n >= 1_000:
         return f"{n / 1_000:.1f}K"
     return str(n)
+
+
+def smart_truncate(text, limit=45, ellipsis="..."):
+    # Troncamento a confine di parola: al massimo `limit` caratteri di TESTO, e se il
+    # taglio cade a meta' parola si arretra all'ultimo spazio utile. I puntini si
+    # aggiungono OLTRE il budget (output max limit+3): cosi' `limit` resta leggibile
+    # come "quanti caratteri di titolo mostro" invece di essere un totale da cui
+    # scalare la lunghezza dei puntini.
+    #
+    # Questa e' l'UNICA regola di presentazione dei titoli: la LEFT() nella query di
+    # get_content_performance e' solo una guardia di payload (vedi database.py).
+    if text is None or (isinstance(text, float) and pd.isna(text)):
+        return "—"
+
+    # I testi reali contengono \r\n e \xa0 (NBSP) DENTRO il titolo. Normalizzarli non
+    # e' cosmetico: senza, rfind(" ") non li riconosce come confine di parola e il
+    # taglio torna a cadere a meta' parola proprio sui titoli multi-riga.
+    s = re.sub(r"\s+", " ", str(text)).strip()
+    if not s:
+        return "—"
+    if len(s) <= limit:
+        return s  # entra intero: nessun puntino, che indicherebbe un taglio inesistente
+
+    cut   = s[:limit]
+    space = cut.rfind(" ")
+    if space > 0:
+        cut = cut[:space]
+    # space <= 0 = parola singola piu' lunga del limite: taglio netto, perche' arretrare
+    # restituirebbe una stringa vuota.
+    #
+    # rstrip della punteggiatura di giunzione: "da noi ,..." e' peggio di "da noi...".
+    # '?' e '!' restano, chiudono la frase e stanno bene prima dei puntini.
+    return cut.rstrip(" ,;:.-") + ellipsis
 
 
 def k_scale(max_val):
@@ -215,7 +249,9 @@ def _score_content(df):
     df["engagement_fmt"] = df["engagement"].apply(fmt_number)
     df["er_fmt"]         = df["er_post"].apply(lambda x: f"{x:.1f}%")
     df["score_fmt"]      = df["content_score"].apply(lambda x: f"{x:.1f}")
-    df["title_short"]    = df["title"].fillna("—").str[:45]
+    # unico punto di troncamento dei titoli: da qui passano sia il PDF che la dashboard,
+    # che leggono entrambi title_short (templates/report.html, static/app.js)
+    df["title_short"]    = df["title"].apply(smart_truncate)
     df["channel_upper"]  = df["channel"].str.upper()
     # data formattata QUI e non nei template: PDF e dashboard mostrano la stessa
     # stringa, e il client riceve testo invece di un Timestamp non serializzabile.

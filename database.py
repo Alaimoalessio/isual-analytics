@@ -342,7 +342,14 @@ def get_content_performance(brand_id, partner_id, start_date, end_date):
     sql = f"""
         SELECT
             pub.post_id,
-            LEFT(po.text, 60)            AS title,
+            -- GUARDIA DI PAYLOAD, non una regola di presentazione: serve solo a non
+            -- trascinare in memoria un post anomalo da decine di KB. La lunghezza
+            -- mostrata la decide kpi.smart_truncate, che e' l'unico punto di
+            -- troncamento. Tenere questo limite ABBONDANTEMENTE sopra il suo `limit`:
+            -- il taglio a confine di parola ha bisogno di vedere qualche carattere
+            -- oltre il limite, e se i due valori si avvicinano e' questa LEFT a
+            -- decidere di nascosto dove finisce il titolo.
+            LEFT(po.text, 200)           AS title,
             pub.social                   AS channel,
             SUM(pub.ana_reach)           AS reach,
             SUM(pub.ana_impressions)     AS impressions,
