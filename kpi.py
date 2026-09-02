@@ -285,6 +285,43 @@ def calc_worst_content(df, top_n=3, worst_n=3):
     return worst.iloc[::-1].reset_index(drop=True)
 
 
+def calc_content_appendix(df):
+    # Elenco COMPLETO dei contenuti del periodo, da mettere in coda al report.
+    # Top e Worst mostrano 3+3 righe: senza questa tabella chi legge non ha modo
+    # di sapere cosa c'e' in mezzo, ne' di verificare un contenuto che non e'
+    # finito in nessuna delle due.
+    #
+    # Riusa _score_content invece di ripartire dal df grezzo: cosi' le colonne
+    # mostrate (title_short, date_fmt, reach_fmt, ...) sono le STESSE identiche
+    # delle altre due tabelle e lo stesso contenuto si legge uguale ovunque nel
+    # PDF. Score, rank ed ER restano calcolati ma non vengono mostrati: questa
+    # e' un'appendice cronologica, non una terza classifica, e ripetere lo score
+    # inviterebbe a leggerla come tale.
+    if df.empty:
+        return df.copy()
+
+    scored = _score_content(df)
+
+    # Ordinamento cronologico decrescente. I tiebreaker NON sono decorativi:
+    # published_at e' un MIN sul gruppo, quindi moltissimi contenuti cadono
+    # nello stesso istante e senza chiavi di spareggio il loro ordine relativo
+    # cambierebbe fra due generazioni dello stesso identico report.
+    # channel e post_id passano da astype(str) perche' post_id arriva dal DB
+    # come UUID: confrontarlo direttamente non e' garantito, e in presenza di
+    # NULL/tipi misti sort_values solleverebbe invece di ordinare.
+    scored = scored.assign(
+        _pub_key     = pd.to_datetime(scored["published_at"]),
+        _channel_key = scored["channel"].astype(str),
+        _post_key    = scored["post_id"].astype(str),
+    ).sort_values(
+        ["_pub_key", "_channel_key", "_post_key"],
+        ascending=[False, True, True],
+        kind="mergesort",
+    ).drop(columns=["_pub_key", "_channel_key", "_post_key"])
+
+    return scored.reset_index(drop=True)
+
+
 def calc_partner_health(df):
     # health score = 40% activation + 35% regularity + 25% performance
     if df.empty:

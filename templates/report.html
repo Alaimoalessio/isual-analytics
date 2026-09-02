@@ -303,6 +303,24 @@
     break-inside: avoid;
     page-break-inside: avoid; /* alias legacy, per sicurezza */
   }
+  /* Variante A FLUSSO, per la sola tabella dell'appendice: e' l'unica del
+     report che puo' essere piu' lunga di una pagina, e con le regole qui sopra
+     sarebbe ingestibile. break-inside: avoid su un blocco piu' alto della
+     pagina non lo tiene comunque intero (non ci sta): lo spinge a inizio pagina
+     successiva, lascia mezza pagina bianca e poi lo spezza lo stesso.
+     overflow: hidden va tolto per lo stesso motivo: crea un contesto di
+     formattazione che WeasyPrint non frammenta, quindi la tabella verrebbe
+     TRONCATA a fine pagina invece di continuare. Le altre .table-card restano
+     intoccate: la regola generale e' quella giusta per tabelle da 3-10 righe. */
+  .table-card--flow {
+    break-inside: auto;
+    page-break-inside: auto;
+    overflow: visible;
+  }
+  /* intestazione ripetuta su ogni pagina occupata dalla tabella: senza, dalla
+     seconda pagina in poi restano sette colonne di numeri senza nome. */
+  .table-card--flow thead { display: table-header-group; }
+
   /* la singola riga di tabella non si spezza mai a meta' tra due pagine:
      protegge le tabelle lunghe (Leaderboard con molti partner) nei report 3+ pagine */
   tbody tr {
@@ -640,6 +658,65 @@
         <img src="data:image/png;base64,{{ channel_chart }}" alt="Channel chart"/>
       </div>
       {% endif %}
+    </div>
+
+    <!-- ── SECTION 7: APPENDICE — TUTTI I CONTENUTI ─────────────── -->
+    {# Chiude il report DOPO Channel Breakdown, di proposito: le sezioni che
+       precedono sono la lettura sintetica (cosa e' andato bene, cosa male, su
+       quali canali), questa e' il dato grezzo da consultare, e sopra
+       spezzerebbe il filo del discorso occupando pagine intere.
+       Nessuna colonna Score/rank/ER: il criterio di lettura qui e' la data,
+       non il merito (vedi kpi.calc_content_appendix). #}
+    <div class="section-title">
+      Appendice — Tutti i contenuti ({{ appendix_rows|length }})
+    </div>
+    <div class="table-card table-card--flow">
+      <table>
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Contenuto</th>
+            <th>Canale</th>
+            <th>Partner</th>
+            <th class="right">Reach</th>
+            <th class="right">Impressions</th>
+            <th class="right">Engagement</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in appendix_rows %}
+          <tr>
+            {# MIN(published_at) del gruppo, come in Top/Worst: la prima pubblicazione #}
+            <td class="nowrap">{{ row.date_fmt }}</td>
+            <td style="max-width:150px;">{{ row.title_short }}</td>
+            <td>
+              <span class="channel-badge ch-{{ row.channel }}">
+                {{ row.channel_upper }}
+              </span>
+            </td>
+            <td class="partner-names">
+              {%- if row.partner_names -%}
+                {%- for nome in row.partner_names %}<div>{{ nome }}</div>{% endfor -%}
+              {%- else -%}—{%- endif -%}
+            </td>
+            <td class="metric">{{ row.reach_fmt }}</td>
+            <td class="right">{{ row.impr_fmt }}</td>
+            <td class="right">{{ row.engagement_fmt }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" style="text-align:center;color:#6C757D;padding:20px;">
+            Nessun contenuto per il periodo selezionato.
+          </td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div style="font-size:9px;color:#6C757D;margin-top:8px;">
+        Elenco completo dei contenuti pubblicati nel periodo, in ordine cronologico
+        decrescente. Un contenuto pubblicato da più partner sullo stesso canale è
+        una riga sola: Reach, Impressions ed Engagement sono la somma di tutte le sue
+        pubblicazioni, e la data è quella della prima. Le stesse righe alimentano
+        Top e Worst Content, dove sono ordinate per Content Score.
+      </div>
     </div>
 
     <!-- ── DISCLAIMER ────────────────────────────────────────────── -->

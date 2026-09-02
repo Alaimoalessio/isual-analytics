@@ -149,6 +149,10 @@ def generate_report(brand_id=None, partner_id=None, tag_id=None, target_id=None,
     # stesso df di partenza: la mutua esclusione Top/Worst vale solo se le due
     # tabelle nascono dalla stessa classifica (vedi kpi.calc_worst_content)
     df_worst_ok    = kpi.calc_worst_content(df_content)
+    # Appendice: TUTTI i contenuti del periodo, riordinati per data. Parte dallo
+    # stesso df di Top/Worst, quindi non e' una seconda fonte di verita': e' la
+    # stessa classifica letta per intero (vedi kpi.calc_content_appendix).
+    df_appendix    = kpi.calc_content_appendix(df_content)
     df_partners_ok = kpi.calc_partner_health(df_partners)
     df_channels_ok = kpi.calc_channel_breakdown(df_channels)
 
@@ -221,6 +225,7 @@ def generate_report(brand_id=None, partner_id=None, tag_id=None, target_id=None,
         channel_chart=channel_chart,
         content_rows=df_content_ok.to_dict("records"),
         worst_rows=df_worst_ok.to_dict("records"),
+        appendix_rows=df_appendix.to_dict("records"),
         # totale dei contenuti del periodo: serve alla sezione Worst per distinguere
         # "nessun contenuto" da "tutti i contenuti sono gia' fra i Top"
         content_total=len(df_content),
