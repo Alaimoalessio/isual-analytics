@@ -104,6 +104,30 @@ def api_health():
         return jsonify({"success": False, "status": "error", "error": str(e)}), 500
 
 
+@app.route('/api/sync-health')
+def api_sync_health():
+    # Salute del job di sync metriche, un record per canale social.
+    # 'degraded' e' il campo che il frontend guarda per decidere se mostrare il
+    # banner: calcolarlo qui evita che la stessa soglia venga reinterpretata in
+    # JavaScript e finisca per divergere da quella in database.py.
+    try:
+        channels = db.get_sync_health()
+        degraded = [c for c in channels if c['status'] != 'ok']
+        worst = 'ok'
+        if any(c['status'] == 'alert' for c in degraded):
+            worst = 'alert'
+        elif degraded:
+            worst = 'warning'
+        return jsonify({
+            "success":  True,
+            "data":     channels,
+            "degraded": degraded,
+            "worst":    worst,
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route('/api/brands')
 def api_brands():
     try:

@@ -601,6 +601,25 @@ body {
 
 .alert-success { background-color: rgba(47, 158, 68, 0.1); color: var(--green-positive); border: 1px solid var(--green-positive); }
 .alert-error { background-color: rgba(224, 49, 49, 0.1); color: var(--red-alert); border: 1px solid var(--red-alert); }
+.alert-warning { background-color: rgba(240, 140, 0, 0.1); color: var(--orange-warning); border: 1px solid var(--orange-warning); }
+
+/* Banner salute sync: stessa base .alert, ma senza il pulsante di chiusura e
+   con il testo a sinistra invece che spinto ai bordi da justify-content */
+#sync-health-banner .alert {
+    justify-content: flex-start;
+    gap: 0.5rem;
+    font-weight: 400;
+    line-height: 1.5;
+}
+
+#sync-health-banner .sync-health-channel { font-weight: 600; }
+
+/* separatore fra canali, non presente prima del primo */
+#sync-health-banner .sync-health-item + .sync-health-item::before {
+    content: "·";
+    margin: 0 0.5rem;
+    opacity: 0.6;
+}
 
 /* ============================================ */
 /* DEMO MVP - Nasconde delta % KPI card         */

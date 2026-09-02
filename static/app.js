@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const exportCsvBtn = document.getElementById('export-csv-btn');
     const reportsBody = document.getElementById('reports-body');
     const alertContainer = document.getElementById('alert-container');
+    const syncHealthBanner = document.getElementById('sync-health-banner');
     const spinner = generateBtn.querySelector('.spinner');
     const dbStatusEl = document.getElementById('db-status');
     const themeToggleBtn = document.getElementById('theme-toggle');
@@ -215,6 +216,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function initDashboard() {
         checkDBHealth();
+        loadSyncHealth();
         await loadBrands();
         await loadFilters();
         reloadData();
@@ -258,6 +260,52 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             dbStatusEl.className = 'db-status error';
             dbStatusEl.querySelector('.status-text').textContent = '🔴 DB Offline';
+        }
+    }
+
+    // Banner "il sync metriche di un canale e' fermo".
+    // Non e' await-ata in initDashboard: se l'endpoint fallisce o e' lento la
+    // dashboard carica comunque, il banner semplicemente non compare. Il caso
+    // "tutto ok" non produce nulla — nessun rumore visivo quando va tutto bene.
+    async function loadSyncHealth() {
+        try {
+            const response = await fetch('/api/sync-health');
+            const result = await response.json();
+            syncHealthBanner.replaceChildren();
+            if (!result.success || !result.degraded || result.degraded.length === 0) return;
+
+            const banner = document.createElement('div');
+            // 'worst' arriva dal server: la soglia vive in un posto solo
+            banner.className = `alert alert-${result.worst === 'alert' ? 'error' : 'warning'}`;
+
+            const icon = document.createElement('span');
+            icon.textContent = result.worst === 'alert' ? '⚠️' : '⏳';
+            banner.appendChild(icon);
+
+            const list = document.createElement('span');
+            result.degraded.forEach(ch => {
+                const item = document.createElement('span');
+                item.className = 'sync-health-item';
+
+                const name = document.createElement('span');
+                name.className = 'sync-health-channel';
+                // textContent, non innerHTML: label puo' ricadere sul valore
+                // grezzo di publications.social per un canale non mappato
+                name.textContent = ch.label;
+                item.appendChild(name);
+
+                const detail = document.createElement('span');
+                detail.textContent = ch.days_since === null
+                    ? ': nessun aggiornamento metriche mai registrato'
+                    : `: nessun aggiornamento metriche da ${ch.days_since} ${ch.days_since === 1 ? 'giorno' : 'giorni'}`;
+                item.appendChild(detail);
+
+                list.appendChild(item);
+            });
+            banner.appendChild(list);
+            syncHealthBanner.appendChild(banner);
+        } catch (error) {
+            syncHealthBanner.replaceChildren();
         }
     }
 

@@ -26,6 +26,11 @@
     </header>
 
     <main class="dashboard-container">
+        <!-- Banner salute sync metriche: persistente, popolato da loadSyncHealth().
+             Deliberatamente FUORI da #alert-container, che ospita toast rimossi
+             dopo 5 secondi da showAlert() -->
+        <div id="sync-health-banner"></div>
+
         <!-- Error/Success Alerts -->
         <div id="alert-container"></div>
 

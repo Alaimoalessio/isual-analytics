@@ -590,3 +590,117 @@ def get_all_brand_settings():
             entry.update(_ISUAL_COLORS)
         result.append(entry)
     return result
+
+
+# ── Salute del sync metriche ────────────────────────────────────────────────
+# Il job di sync dell'app di terzi riscrive publications.updated_at ogni volta
+# che aggiorna le metriche di una riga. Se per un canale l'updated_at piu'
+# recente e' vecchio, quel sync e' fermo: e' il segnale che nell'ottobre 2025
+# e' mancato per LinkedIn (e, come mostra lo storico, anche per Facebook fra
+# novembre 2025 e luglio 2026) senza che nessuno se ne accorgesse.
+#
+# Perche' `updated_at IS DISTINCT FROM created_at` e non `!=`: una riga solo
+# INSERITA ha i due timestamp uguali e non dice nulla sulla salute del sync.
+# `!=` scarterebbe anche gli eventuali NULL, ma per il motivo sbagliato e in
+# silenzio; IS DISTINCT FROM li tratta esplicitamente.
+#
+# Soglie in GIORNI INTERI trascorsi dall'ultimo sync. Facebook e Instagram si
+# aggiornano quotidianamente, quindi il margine e' volutamente stretto: i 3
+# giorni di 'ok' assorbono un weekend piu' un singolo run fallito senza far
+# comparire il banner a torto — un banner che appare spesso a sproposito e' un
+# banner che si smette di leggere, ed e' cosi' che questo tipo di allarme muore.
+# Oltre i 7 giorni nessuna causa transitoria regge.
+#
+# 'default' vale per ogni canale non elencato. Aggiungere una chiave con il
+# nome del canale (es. 'linkedin': {'warning': 10, 'alert': 30}) allenta la
+# soglia per quel solo canale senza toccare la logica.
+SYNC_THRESHOLDS = {
+    'default': {'warning': 3, 'alert': 7},
+}
+
+# Un canale senza pubblicazioni recenti non ha nulla da sincronizzare: senza
+# questo filtro risulterebbe fermo per sempre, che e' rumore, non un guasto.
+SYNC_RECENT_PUBS_DAYS = 90
+
+# I nomi in publications.social sono minuscoli; questi servono solo al banner.
+SYNC_CHANNEL_LABELS = {
+    'facebook':  'Facebook',
+    'instagram': 'Instagram',
+    'linkedin':  'LinkedIn',
+    'twitter':   'X/Twitter',
+    'tiktok':    'TikTok',
+    'youtube':   'YouTube',
+}
+
+
+def sync_status_for(channel, days_since):
+    # days_since None = il canale ha pubblicazioni recenti ma NESSUNA riga mai
+    # toccata dal sync. Non e' "ok, appena sincronizzato": e' il caso peggiore,
+    # un sync che per quel canale non ha mai funzionato.
+    if days_since is None:
+        return 'alert'
+    t = SYNC_THRESHOLDS.get(channel, SYNC_THRESHOLDS['default'])
+    if days_since > t['alert']:
+        return 'alert'
+    if days_since > t['warning']:
+        return 'warning'
+    return 'ok'
+
+
+def get_sync_health(recent_days=None):
+    # Sola lettura. Gira ad ogni caricamento della dashboard, quindi tutto in
+    # una sola scansione: i FILTER evitano subquery separate per l'ultimo sync
+    # e per la finestra di pubblicazioni recenti.
+    #
+    # I giorni si calcolano in SQL di proposito: updated_at e' `timestamp
+    # WITHOUT time zone` mentre published_at e' `WITH time zone`, e mescolarli
+    # lato Python e' il punto in cui si introduce un errore di fuso silenzioso.
+    # `now() AT TIME ZONE 'UTC'` riporta l'ora corrente sulla stessa base naive
+    # di updated_at; published_at resta confrontato con now() aware.
+    #
+    # HAVING sullo stesso FILTER del SELECT: i canali senza pubblicazioni
+    # recenti spariscono dal risultato invece di arrivare al frontend come
+    # falsi positivi.
+    if recent_days is None:
+        recent_days = SYNC_RECENT_PUBS_DAYS
+
+    sql = """
+        SELECT
+            pub.social AS channel,
+            MAX(pub.updated_at) FILTER (
+                WHERE pub.updated_at IS DISTINCT FROM pub.created_at
+            ) AS last_sync,
+            FLOOR(EXTRACT(EPOCH FROM
+                (now() AT TIME ZONE 'UTC') - MAX(pub.updated_at) FILTER (
+                    WHERE pub.updated_at IS DISTINCT FROM pub.created_at
+                )
+            ) / 86400) AS days_since,
+            COUNT(*) FILTER (
+                WHERE pub.published_at >= now() - make_interval(days => %s)
+            ) AS recent_posts
+        FROM publications pub
+        WHERE pub.status = 'OK'
+        GROUP BY pub.social
+        HAVING COUNT(*) FILTER (
+            WHERE pub.published_at >= now() - make_interval(days => %s)
+        ) > 0
+        ORDER BY pub.social
+    """
+    df = run_query(sql, [recent_days, recent_days])
+
+    result = []
+    for _, row in df.iterrows():
+        channel = row['channel']
+        # days_since arriva float64 (la colonna e' NULL per i canali mai
+        # sincronizzati, e pandas promuove a float l'intera colonna)
+        days_since = int(row['days_since']) if pd.notna(row['days_since']) else None
+        last_sync = row['last_sync'] if pd.notna(row['last_sync']) else None
+        result.append({
+            'channel':      channel,
+            'label':        SYNC_CHANNEL_LABELS.get(channel, channel.capitalize()),
+            'last_sync':    last_sync.isoformat() if last_sync is not None else None,
+            'days_since':   days_since,
+            'recent_posts': int(row['recent_posts']),
+            'status':       sync_status_for(channel, days_since),
+        })
+    return result
