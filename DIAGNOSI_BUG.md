@@ -1,3 +1,23 @@
+# ⚠️ DOCUMENTO STORICO — NON È LO STATO ATTUALE DEL CODICE
+
+**Congelato al 2026-09-03.** Conservato per la cronologia delle diagnosi, non per
+essere letto come descrizione del comportamento corrente. Entrambi i bug che
+descrive sono chiusi:
+
+- **BUG 1** — chiuso il 2026-07-17. La nota di aggiornamento è già più sotto, nel
+  corpo del documento.
+- **BUG 2 ("colonna PARTNER sempre 0") — NON è più aperto**, malgrado quello che
+  si legge qui dentro. La diagnosi si riferiva a un template che stampava
+  `n_partners` e a `calc_content_score(df, top_n=5)`. Oggi il template stampa
+  **`partner_names`** — i nomi dei partner, con `—` quando non ce ne sono — e il
+  taglio è 3+3 con mutua esclusione fra Top e Worst. `n_partners` resta calcolato
+  in `get_content_performance` ma **non è letto da nessun template**: è una colonna
+  morta, segnalata in `HANDOVER.md` §6.4.
+
+Per lo stato attuale del progetto: **`HANDOVER.md`**.
+
+---
+
 # Diagnosi Bug — Sessione Read-Only
 
 **Data:** 2026-07-02

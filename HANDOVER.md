@@ -56,6 +56,18 @@ lo è più (§6). Se lo leggi come diagnosi corrente, diagnostichi bug chiusi.
 `.env` non è versionato e non deve esserlo. Le credenziali di produzione stanno su
 Render e nel file locale di chi sviluppa.
 
+### Questo documento esiste in due copie
+
+**`HANDOVER.md` (in repo) è la sorgente.** `HANDOVER.docx` è una copia di comodo per
+chi preferisce leggerlo in Word, generata con `python-docx` a partire dal Markdown, e
+**resta fuori dal repo** in coerenza con il `.gitignore`, che esclude gli altri
+documenti Office.
+
+**Non c'è alcun automatismo fra le due:** se modifichi il `.md`, il `.docx` va
+rigenerato a mano, altrimenti diverge in silenzio — che è esattamente il tipo di
+problema che questo documento esiste per prevenire. In caso di discrepanza, **fa fede
+il `.md`**: è l'unico dei due che sta sotto controllo di versione.
+
 ---
 
 ## 1. Architettura in breve
