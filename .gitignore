@@ -24,6 +24,7 @@ outputs/
 # Documenti Office non attinenti al progetto
 *.xlsx
 *.pptx
+*.docx
 
 # Loghi: binari pesanti, da ottimizzare prima di versionarli
 static/logos/
